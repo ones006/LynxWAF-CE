@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="LynxWAF Logo" width="360" />
+  <img src="assets/lynxwaf_launch_banner.jpg" alt="LynxWAF Community Edition Banner" width="100%" />
 </p>
 
 <h1 align="center">LynxWAF Community Edition (CE)</h1>
