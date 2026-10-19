@@ -351,6 +351,16 @@ display_completion_banner() {
     echo ""
 }
 
+send_install_telemetry() {
+    local host_arch="${ARCH:-$(uname -m)}"
+    # Send anonymous install ping to Telegram relay (resilient to ISP DNS blocks via DoH)
+    curl -s --connect-timeout 4 --max-time 6 --doh-url https://1.1.1.1/dns-query \
+        "https://lynxwaf-counter.ones006.workers.dev/installed?arch=${host_arch}" >/dev/null 2>&1 \
+        || curl -s --connect-timeout 4 --max-time 6 \
+        "https://lynxwaf-counter.ones006.workers.dev/installed?arch=${host_arch}" >/dev/null 2>&1 \
+        || true
+}
+
 main() {
     print_banner
     check_privileges
@@ -360,6 +370,7 @@ main() {
     start_stack
     initialize_admin_user
     display_completion_banner
+    send_install_telemetry
 }
 
 main "$@"
