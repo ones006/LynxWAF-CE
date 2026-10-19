@@ -1,0 +1,185 @@
+version: '3.8'
+
+# ==============================================================================
+# LynxWAF Community Edition — Hardened Orchestration Stack
+# Repository: https://github.com/ones006/LynxWAF-CE
+#
+# Principles:
+#   • CIS Docker Benchmark Hardened (Non-Root, Cap-Drop ALL, Read-Only FS)
+#   • L4/L7 High-Throughput Kernel Bypass / Direct Client IP Preservation
+#   • Automated Health Checks & Auto-Recovery
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Data Plane: OpenResty WAF Reverse Proxy & Real-Time Inspection Engine
+  # ----------------------------------------------------------------------------
+  lynxwaf-openresty:
+    image: ${LYNXWAF_OPENRESTY_IMAGE:-ghcr.io/ones006/lynxwaf-openresty:ce-latest}
+    container_name: lynxwaf-openresty
+    restart: always
+    network_mode: "host" # High-throughput L4/L7 proxy with direct client IP preservation
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - CHOWN
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,noexec,nosuid,size=16m
+      - /opt/lynxwaf/openresty/nginx/client_body_temp:rw,noexec,nosuid,size=128m
+      - /opt/lynxwaf/openresty/nginx/proxy_temp:rw,noexec,nosuid,size=128m
+    volumes:
+      - ./data/nginx/logs:/www/wwwlogs:rw
+      - ./data/nginx/logs:/usr/local/openresty/nginx/logs:rw
+      - ./data/wwwroot:/www/wwwroot:ro
+      - ./data/nginx/conf.d:/etc/nginx:ro
+      - ./data/nginx/conf:/usr/local/openresty/nginx/conf:ro
+      - /etc/localtime:/etc/localtime:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 1000000
+      core: 0
+    depends_on:
+      lynxwaf-mysql:
+        condition: service_healthy
+      lynxwaf-redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ----------------------------------------------------------------------------
+  # 2. Control Plane: LynxWAF Go Controller & Cyber-SOC Management Console
+  # ----------------------------------------------------------------------------
+  lynxwaf-daemon:
+    image: ${LYNXWAF_DAEMON_IMAGE:-ghcr.io/ones006/lynxwaf-daemon:ce-latest}
+    container_name: lynxwaf-daemon
+    restart: always
+    ports:
+      - "${LYNXWAF_BIND_IP:-0.0.0.0}:${LYNXWAF_PORT:-8379}:8379"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    volumes:
+      - ./config:/app/config:rw
+      - ./logs:/app/logs:rw
+      - ./data:/app/data:rw
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - LYNXWAF_ENV=${LYNXWAF_ENV:-production}
+      - LYNXWAF_PORT=8379
+      - DB_HOST=lynxwaf-mysql
+      - DB_PORT=3306
+      - REDIS_HOST=lynxwaf-redis
+      - REDIS_PORT=6379
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-lynxwaf_admin_sec_2026}
+    depends_on:
+      lynxwaf-mysql:
+        condition: service_healthy
+      lynxwaf-redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # 3. Telemetry & Analytics Database: Tuned MySQL 8.0 for WAF Log Ingestion
+  # ----------------------------------------------------------------------------
+  lynxwaf-mysql:
+    image: mysql:8.0
+    container_name: lynxwaf-mysql
+    restart: always
+    ports:
+      - "127.0.0.1:33060:3306"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-lynxwaf_vault_secure_pwd_2026}
+      MYSQL_DATABASE: lynxwaf
+    volumes:
+      - ./data/mysql/data:/var/lib/mysql:rw
+      - ./data/mysql/log:/var/log/mysql:rw
+      - /etc/localtime:/etc/localtime:ro
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --skip-name-resolve
+      --innodb_flush_log_at_trx_commit=2
+      --innodb_buffer_pool_size=512M
+      --innodb_log_buffer_size=32M
+      --max_connections=300
+      --table_open_cache=1000
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-lynxwaf_vault_secure_pwd_2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # 4. State & Challenge Cache: In-Memory Redis Engine
+  # ----------------------------------------------------------------------------
+  lynxwaf-redis:
+    image: redis:7-alpine
+    container_name: lynxwaf-redis
+    restart: always
+    ports:
+      - "127.0.0.1:6379:6379"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-lynxwaf_cluster_secret_2026}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-lynxwaf_cluster_secret_2026}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"

@@ -1,0 +1,28 @@
+name: Validate Docker Compose Configuration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy sample environment configuration
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose Syntax
+        run: docker compose config --quiet
+
+      - name: Validate Shell Scripts Syntax
+        run: |
+          bash -n install.sh
+          bash -n update.sh
+          bash -n test_poc_simulation.sh
