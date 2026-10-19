@@ -13,7 +13,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/docker-multi--arch-orange.svg?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blueviolet.svg?style=flat-square" alt="Architecture">
-  <a href="https://lynxwaf.id"><img src="https://img.shields.io/badge/website-lynxwaf.id-00C7B7.svg?style=flat-square" alt="Website"></a>
+  <a href="https://t.me/onelynxs"><img src="https://img.shields.io/badge/Telegram-@onelynxs-2CA5E0.svg?style=flat-square&logo=telegram" alt="Telegram"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <a href="#-system-requirements">Requirements</a> •
   <a href="#-attack-simulation--testing">Testing & PoC</a> •
   <a href="docs/QUICKSTART.md">Documentation</a> •
-  <a href="https://lynxwaf.id">Official Portal</a>
+  <a href="https://t.me/onelynxs">Telegram Support</a>
 </p>
 
 ---
@@ -181,7 +181,7 @@ sudo bash update.sh
 ## 🚀 Upgrading to Enterprise Sovereign Edition
 
 Upgrading from Community Edition to Enterprise Sovereign Edition requires **zero downtime and no re-installation**:
-1. Obtain an Ed25519-signed enterprise license from the [LynxWAF Commercial Portal](https://lynxwaf.id).
+1. Contact us via Telegram [**@onelynxs**](https://t.me/onelynxs) or email `ones006@gmail.com` to obtain an Ed25519-signed enterprise license (`lynxwaf.lic`).
 2. Open your LynxWAF Web Console (`https://<IP>:8379`).
 3. Navigate to **Settings ➔ License & Cryptography**.
 4. Paste your signed `.lic` content and click **Activate**.
@@ -201,10 +201,10 @@ Upgrading from Community Edition to Enterprise Sovereign Edition requires **zero
 
 ## 🤝 Community & Support
 
+- **Telegram Support & Inquiries**: [**@onelynxs**](https://t.me/onelynxs)
 - **Bug Reports & Issues**: [GitHub Issues](https://github.com/ones006/LynxWAF-CE/issues)
 - **Feature Requests**: [GitHub Discussions](https://github.com/ones006/LynxWAF-CE/discussions)
-- **Official Website & Portal**: [https://lynxwaf.id](https://lynxwaf.id)
-- **Commercial Licensing & Partnerships**: `ones006@gmail.com`
+- **Commercial Licensing & Partnerships**: Telegram [**@onelynxs**](https://t.me/onelynxs) or `ones006@gmail.com`
 
 ---
 

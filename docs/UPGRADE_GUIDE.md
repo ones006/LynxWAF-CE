@@ -50,7 +50,7 @@ LynxWAF Community Edition has built-in forward compatibility with the Enterprise
 
 ### Step-by-Step License Activation:
 
-1. Request your signed license file (`lynxwaf.lic`) from the [LynxWAF Commercial Portal](https://lynxwaf.id) or your enterprise account representative.
+1. Request your signed license file (`lynxwaf.lic`) by contacting us via Telegram [**@onelynxs**](https://t.me/onelynxs) or email `ones006@gmail.com`.
 2. Log in to your existing Community Edition console:
    ```
    https://<YOUR_SERVER_IP>:8379

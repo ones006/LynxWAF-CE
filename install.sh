@@ -51,7 +51,7 @@ EOF
     echo -e "${NC}"
     echo -e "${BOLD}Next-Gen Sovereign Web Application Firewall & Semantic L7 Defense${NC}"
     echo -e "Community Hub & Docs : ${BLUE}https://github.com/${GITHUB_REPO}${NC}"
-    echo -e "Official Portal      : ${BLUE}https://lynxwaf.id${NC}"
+    echo -e "Telegram Support     : ${BLUE}https://t.me/onelynxs${NC}"
     echo "------------------------------------------------------------------"
 }
 
@@ -346,7 +346,7 @@ display_completion_banner() {
     echo -e "    or bind your trusted domain certificate via the Web Console."
     echo ""
     echo -e "  ${BOLD}Need Enterprise Multi-Node / Compliance Outbound DLP?${NC}"
-    echo -e "    Visit LynxWAF Portal: ${BLUE}https://lynxwaf.id${NC}"
+    echo -e "    Contact via Telegram: ${BLUE}https://t.me/onelynxs${NC} (or email: ones006@gmail.com)"
     echo -e "${GREEN}${BOLD}========================================================================${NC}"
     echo ""
 }
