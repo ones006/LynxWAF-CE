@@ -32,12 +32,17 @@ services:
       - /run:rw,noexec,nosuid,size=16m
       - /opt/lynxwaf/openresty/nginx/client_body_temp:rw,noexec,nosuid,size=128m
       - /opt/lynxwaf/openresty/nginx/proxy_temp:rw,noexec,nosuid,size=128m
+      - /opt/lynxwaf/openresty/nginx/fastcgi_temp:rw,noexec,nosuid,size=64m
+      - /opt/lynxwaf/openresty/nginx/uwsgi_temp:rw,noexec,nosuid,size=64m
+      - /opt/lynxwaf/openresty/nginx/scgi_temp:rw,noexec,nosuid,size=64m
     volumes:
+      - ./data/nginx/logs:/opt/lynxwaf/openresty/nginx/logs:rw
       - ./data/nginx/logs:/www/wwwlogs:rw
       - ./data/nginx/logs:/usr/local/openresty/nginx/logs:rw
-      - ./data/wwwroot:/www/wwwroot:ro
-      - ./data/nginx/conf.d:/etc/nginx:ro
+      - ./data/nginx/conf:/opt/lynxwaf/openresty/nginx/conf:ro
       - ./data/nginx/conf:/usr/local/openresty/nginx/conf:ro
+      - ./data/nginx/conf.d:/etc/nginx:ro
+      - ./data/wwwroot:/www/wwwroot:ro
       - /etc/localtime:/etc/localtime:ro
     deploy:
       resources:
