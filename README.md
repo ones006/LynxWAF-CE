@@ -19,6 +19,7 @@
 <p align="center">
   <a href="#-quick-start-1-line-installation">Quick Start</a> •
   <a href="#-key-features">Key Features</a> •
+  <a href="#-homelab--small-business-hardware-appliance">Homelab & Raspberry Pi</a> •
   <a href="#-feature-matrix-ce-vs-enterprise">CE vs Enterprise</a> •
   <a href="#-system-requirements">Requirements</a> •
   <a href="#-attack-simulation--testing">Testing & PoC</a> •
@@ -39,6 +40,7 @@ Built on an optimized **OpenResty / LuaJIT** data plane and a **compiled Go** co
 - ⚡ **High Throughput & Low Latency**: Sub-millisecond inspection latency powered by LuaJIT and connection-pooling reverse proxy.
 - 🔒 **Zero Telemetry Guarantee**: Runs 100% on your own infrastructure. No logs, traffic metrics, or SSL keys are ever phoned home to external cloud providers.
 - 🤖 **Silent Anti-Bot Defense**: Invisible computational Proof-of-Work (PoW) challenge that mitigates scrapers and brute-force bots without disrupting human visitors with CAPTCHAs.
+- 🍓 **Native ARM64 & Raspberry Pi Ready**: Lightweight footprint (~300MB idle RAM) running natively on **Raspberry Pi 4 / 5, Orange Pi, Rockchip, Intel NUC, and Homelab SBC mini-PCs**. Perfect for home labs, self-hosted services, and small business on-premise appliances.
 - 🐳 **Hardened CIS Container Stack**: Non-root execution (`uid 1000`), read-only root filesystems, and `cap_drop: ALL`.
 
 ---
@@ -135,6 +137,33 @@ cd /opt/lynxwaf
 ```
 
 The script executes real-world attack vectors (SQLi, XSS, RCE, Path Traversal, Scanner Probes) and verifies that LynxWAF responds with an immediate **`403 Forbidden`** interception response.
+
+---
+
+## 🍓 Homelab & Small Business Hardware Appliance
+
+LynxWAF is engineered with high-efficiency compiled Go and C/LuaJIT routines, making it exceptionally lightweight and suitable for running on cost-effective Single Board Computers (SBC) and low-power hardware:
+
+```
+                      LynxWAF Edge Security Gateway
+             ┌──────────────────────────────────────────────┐
+             │   Raspberry Pi 4 / 5  or  Mini-PC / NUC      │
+             │                                              │
+Internet ───►│ [Port 80/443: LynxWAF L7 Semantic Inspection]├──► Internal LAN /
+             │ [Port 8379: Cyber-SOC Management Console]   │    Home Assistant,
+             └──────────────────────────────────────────────┘    Nextcloud, ERP
+```
+
+| Target Device | Tested Architecture | Idle RAM Footprint | Ideal Use Case |
+| :--- | :--- | :---: | :--- |
+| **Raspberry Pi 5 (4GB / 8GB)** | `linux/arm64` | ~300 MB | High-traffic self-hosted websites, home labs, remote branch offices |
+| **Raspberry Pi 4 Model B (2GB+)** | `linux/arm64` | ~300 MB | Home lab edge firewall, Nextcloud / Home Assistant security proxy |
+| **Orange Pi 5 / Rock 5B** | `linux/arm64` | ~320 MB | Gigabit throughput inspection for local servers |
+| **Intel NUC / Beelink / Chuwi Mini-PC** | `linux/amd64` | ~350 MB | Small & Medium Enterprise (SME) on-premise security appliance |
+| **Proxmox VE / KVM / ESXi VM** | `amd64` / `arm64` | ~400 MB | Virtualized edge security gateway |
+
+> **💡 Homelab Tip:**  
+> By placing LynxWAF on a Raspberry Pi or Mini-PC at your home network boundary, you can safely expose self-hosted services (Home Assistant, Nextcloud, Plex, Portainer, Vaultwarden, local web servers) to the internet while maintaining full protection against brute-force bots, SQL injections, and zero-day scanner exploits!
 
 ---
 
