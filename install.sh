@@ -293,7 +293,7 @@ start_stack() {
     # Initialize default configurations from container image if missing on host
     if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
         log_info "Extracting default configurations from daemon container image..."
-        docker run --rm -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest sh -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null || true' 2>/dev/null || true
+        docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null || true' 2>/dev/null || true
         chown -R 1000:1000 "$INSTALL_DIR/config" 2>/dev/null || true
     fi
 
