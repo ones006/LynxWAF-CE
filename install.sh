@@ -367,8 +367,27 @@ start_stack() {
     if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
         log_info "Extracting default configurations from daemon container image..."
         docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null || true' 2>/dev/null || true
-        chown -R 1000:1000 "$INSTALL_DIR/config" 2>/dev/null || true
     fi
+
+    # Ensure MySQL configuration points to internal container network with secure credentials
+    local db_pass
+    db_pass=$(grep '^MYSQL_ROOT_PASSWORD=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d'=' -f2- || true)
+    if [ -z "$db_pass" ]; then
+        db_pass="${MYSQL_SECRET:-}"
+    fi
+    cat << EOF > "$INSTALL_DIR/config/mysql.json"
+{
+    "default": {
+        "Host": "lynxwaf-mysql",
+        "Port": 3306,
+        "UserName": "root",
+        "Password": "${db_pass}",
+        "DbName": "lynxwaf_db",
+        "PreFix": ""
+    }
+}
+EOF
+    chown -R 1000:1000 "$INSTALL_DIR/config" 2>/dev/null || true
 
     log_info "Starting LynxWAF container services..."
     $DOCKER_COMPOSE_CMD up -d

@@ -95,8 +95,18 @@ services:
       - LYNXWAF_PORT=8379
       - DB_HOST=lynxwaf-mysql
       - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - DB_NAME=lynxwaf_db
+      - MYSQL_HOST=lynxwaf-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=lynxwaf_db
+      - MYSQL_DB=lynxwaf_db
       - REDIS_HOST=lynxwaf-redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-lynxwaf_admin_sec_2026}
       - WAF_ENGINE_URL=${WAF_ENGINE_URL:-http://host.docker.internal}
     depends_on:
@@ -130,7 +140,7 @@ services:
       - DAC_OVERRIDE
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}"
-      MYSQL_DATABASE: lynxwaf
+      MYSQL_DATABASE: lynxwaf_db
     volumes:
       - ./data/mysql/data:/var/lib/mysql:rw
       - ./data/mysql/log:/var/log/mysql:rw
