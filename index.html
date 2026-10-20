@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LynxWAF Community Edition — Sovereign L7 Web Application Firewall</title>
+  <meta name="description" content="Next-Gen Sovereign Web Application Firewall & Semantic L7 Attack Defense Engine. Lightweight, free forever, and optimized for Cloud, VPS & Raspberry Pi Homelabs." />
+  
+  <!-- Open Graph / Meta -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="LynxWAF Community Edition — Sovereign Web Application Firewall" />
+  <meta property="og:description" content="High-performance, semantic AST attack inspection engine. 100% on-premise data sovereignty. Runs natively on Linux VPS and Raspberry Pi 4/5." />
+  <meta property="og:image" content="https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/assets/lynxwaf_launch_banner.jpg" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #030712;
+      --surface: #090e1a;
+      --surface-elevated: #0f172a;
+      --card-bg: rgba(15, 23, 42, 0.65);
+      --card-hover: rgba(30, 41, 59, 0.85);
+      --border: #1e293b;
+      --border-accent: rgba(56, 189, 248, 0.3);
+      
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.35);
+      --emerald: #34d399;
+      --purple: #a855f7;
+      --rose: #f43f5e;
+      --amber: #fbbf24;
+      
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+
+      --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 65%, rgba(168, 85, 247, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 90%, rgba(52, 211, 153, 0.05) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Navbar */
+    header.nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(3, 7, 18, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 72px;
+    }
+    .logo-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-badge img {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+    .logo-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .logo-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--cyan);
+      border: 1px solid var(--border-accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover {
+      color: var(--cyan);
+    }
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .nav-cta:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px var(--cyan-glow);
+      color: var(--cyan);
+    }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 60px;
+      text-align: center;
+      position: relative;
+    }
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid var(--border-accent);
+      color: var(--cyan);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 52px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      max-width: 900px;
+      margin: 0 auto 20px;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero h1 span.gradient-text {
+      background: linear-gradient(135deg, var(--cyan) 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p.lead {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 740px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+
+    /* 1-Line Command Box */
+    .install-box {
+      max-width: 760px;
+      margin: 0 auto 40px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 12px 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      position: relative;
+      transition: border-color 0.2s;
+    }
+    .install-box:hover {
+      border-color: var(--border-accent);
+    }
+    .install-cmd {
+      font-family: var(--mono);
+      font-size: 13.5px;
+      color: #7dd3fc;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-right: 16px;
+    }
+    .install-cmd span.prefix {
+      color: var(--text-dim);
+      user-select: none;
+    }
+    .btn-copy {
+      background: linear-gradient(135deg, var(--cyan), #0284c7);
+      color: #030712;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-copy:hover {
+      box-shadow: 0 0 20px var(--cyan-glow);
+      transform: translateY(-1px);
+    }
+    .btn-copy.copied {
+      background: var(--emerald);
+      color: #030712;
+    }
+
+    /* Badges */
+    .hero-badges {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .spec-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 8px;
+    }
+    .spec-badge strong {
+      color: var(--text);
+    }
+
+    /* Banner Showcase */
+    .banner-preview {
+      margin: 50px auto 0;
+      max-width: 1000px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+    }
+    .banner-preview img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Section Styling */
+    section {
+      padding: 90px 0;
+      border-top: 1px solid var(--border);
+    }
+    .section-header {
+      text-align: center;
+      max-width: 720px;
+      margin: 0 auto 50px;
+    }
+    .section-tag {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--cyan);
+      margin-bottom: 8px;
+    }
+    .section-header h2 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 14px;
+    }
+    .section-header p {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    /* Feature Cards */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .feature-card:hover {
+      background: var(--card-hover);
+      border-color: var(--border-accent);
+      transform: translateY(-4px);
+      box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid var(--border-accent);
+    }
+    .feature-card h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 14.5px;
+      line-height: 1.6;
+    }
+
+    /* Homelab / Hardware Showcase */
+    .homelab-box {
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(9, 14, 26, 0.9));
+      border: 1px solid var(--border-accent);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .table-responsive {
+      overflow-x: auto;
+      margin-top: 24px;
+    }
+    table.spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 14px;
+    }
+    table.spec-table th {
+      padding: 14px 16px;
+      background: var(--surface-elevated);
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+    table.spec-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    table.spec-table tr:hover td {
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .badge-chip {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: var(--mono);
+      font-weight: 600;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--cyan);
+    }
+
+    /* Terminal Simulation */
+    .terminal-window {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-family: var(--mono);
+      font-size: 13px;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+      margin-top: 30px;
+    }
+    .terminal-bar {
+      background: #090e1a;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-circle {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .c-red { background: #ef4444; }
+    .c-yellow { background: #f59e0b; }
+    .c-green { background: #10b981; }
+    .terminal-title {
+      color: var(--text-dim);
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .terminal-body {
+      padding: 20px;
+      line-height: 1.8;
+      color: #94a3b8;
+    }
+    .t-cyan { color: var(--cyan); }
+    .t-green { color: var(--emerald); }
+    .t-red { color: var(--rose); }
+    .t-white { color: #f8fafc; font-weight: 600; }
+
+    /* Comparison Matrix */
+    .pricing-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      position: relative;
+    }
+    .pricing-card.featured {
+      border-color: var(--cyan);
+      box-shadow: 0 0 30px rgba(56, 189, 248, 0.15);
+    }
+    .pricing-badge {
+      position: absolute;
+      top: -12px;
+      right: 24px;
+      background: var(--cyan);
+      color: #030712;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 60px 0 30px;
+      background: var(--surface);
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover {
+      color: var(--cyan);
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 34px; }
+      .nav-links { display: none; }
+      .install-box { flex-direction: column; align-items: stretch; gap: 12px; }
+      .install-cmd { overflow-x: auto; }
+      .btn-copy { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="#" class="logo-badge">
+        <img src="assets/logo.png" alt="LynxWAF Logo" />
+        <span class="logo-title">LynxWAF</span>
+        <span class="logo-tag">CE v1.0.0</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#homelab">Homelab & SBC</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#simulation">Attack PoC</a></li>
+        <li><a href="docs/OPERATOR_MANUAL.md">Operator Manual</a></li>
+        <li><a href="https://t.me/onelynxs" target="_blank">Telegram</a></li>
+      </ul>
+
+      <a href="https://github.com/ones006/LynxWAF-CE" target="_blank" class="nav-cta">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub Repo
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-pill">
+        🛡️ Community Edition Released • Free Forever for up to 3 Domains
+      </div>
+      
+      <h1>Sovereign Web Defense <br/>Built for <span class="gradient-text">Cloud, VPS & Raspberry Pi</span></h1>
+      
+      <p class="lead">
+        Next-gen Layer 7 Web Application Firewall with Semantic AST Attack Inspection, Silent Anti-Bot Cryptographic Proof-of-Work, and Zero External Telemetry. 100% on-premise data sovereignty.
+      </p>
+
+      <!-- 1-Click Install Command Box -->
+      <div class="install-box">
+        <div class="install-cmd" id="installCmd">
+          <span class="prefix">$ </span>bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/install.sh)"
+        </div>
+        <button class="btn-copy" id="copyBtn" onclick="copyInstallCommand()">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          Copy Command
+        </button>
+      </div>
+
+      <div class="hero-badges">
+        <div class="spec-badge">⚡ Latency: <strong>&lt;0.5ms</strong></div>
+        <div class="spec-badge">💾 Idle RAM: <strong>~300 MB</strong></div>
+        <div class="spec-badge">🍓 Architecture: <strong>amd64 & arm64</strong></div>
+        <div class="spec-badge">🔒 Standards: <strong>CIS Docker Hardened</strong></div>
+      </div>
+
+      <div class="banner-preview">
+        <img src="assets/lynxwaf_launch_banner.jpg" alt="LynxWAF Official Launch Banner" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Features -->
+  <section id="features">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">Enterprise Architecture</div>
+        <h2>Engineered for Uncompromising Security</h2>
+        <p>Combining high-speed LuaJIT coroutines with a compiled Go control plane and modern Cyber-SOC dashboard.</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="feature-card">
+          <div class="feature-icon">🧠</div>
+          <h3>Semantic AST Inspection</h3>
+          <p>Parses requests into Abstract Syntax Trees instead of brittle regex patterns, defeating evasion techniques like comment injection, hex encodings, and nested payloads.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>Silent Anti-Bot PoW</h3>
+          <p>Mitigate scrapers, credential stuffers, and brute-force scanners using seamless cryptographic Proof-of-Work client challenges without annoying CAPTCHAs.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔒</div>
+          <h3>100% Data Sovereignty</h3>
+          <p>Zero cloud dependencies. Your logs, telemetry metrics, customer traffic, and private SSL keys stay entirely inside your own hardware boundary.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Direct Kernel IP Preservation</h3>
+          <p>Utilizes host networking mode to eliminate Docker NAT bridge overhead, preserving true client IPs for accurate geo-blocking and rate limiting.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📜</div>
+          <h3>Auto Let's Encrypt SSL</h3>
+          <p>Automated zero-downtime ACME client issues and renews free TLS certificates automatically, or upload custom enterprise wildcard certificates.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>CIS Benchmark Hardened</h3>
+          <p>Every container executes as non-root (UID 1000), drops ALL Linux capabilities, and operates on an immutable read-only root filesystem.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Homelab & Raspberry Pi -->
+  <section id="homelab">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">Homelab & Edge Appliances</div>
+        <h2>🍓 Perfect for Raspberry Pi & Mini-PCs</h2>
+        <p>Lightweight footprint designed to run directly on Single Board Computers (SBC) and low-power homelab servers.</p>
+      </div>
+
+      <div class="homelab-box">
+        <h3 style="font-size: 22px; margin-bottom: 12px;">Turn your Raspberry Pi into an Enterprise Security Gateway</h3>
+        <p style="color: var(--text-muted); font-size: 15px; margin-bottom: 24px;">
+          Expose your self-hosted services (Home Assistant, Nextcloud, Plex, Portainer, Vaultwarden, local web apps) safely to the internet without fear of bots, SQL injections, or zero-day exploits.
+        </p>
+
+        <div class="table-responsive">
+          <table class="spec-table">
+            <thead>
+              <tr>
+                <th>Hardware Platform</th>
+                <th>Architecture</th>
+                <th>Idle Memory</th>
+                <th>Ideal Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Raspberry Pi 5 (4GB / 8GB)</strong></td>
+                <td><span class="badge-chip">linux/arm64</span></td>
+                <td>~300 MB</td>
+                <td>High-traffic self-hosted websites, branch office security</td>
+              </tr>
+              <tr>
+                <td><strong>Raspberry Pi 4 Model B (2GB+)</strong></td>
+                <td><span class="badge-chip">linux/arm64</span></td>
+                <td>~300 MB</td>
+                <td>Home lab edge proxy for Home Assistant & Nextcloud</td>
+              </tr>
+              <tr>
+                <td><strong>Orange Pi 5 / Rock 5B</strong></td>
+                <td><span class="badge-chip">linux/arm64</span></td>
+                <td>~320 MB</td>
+                <td>Gigabit throughput edge inspection for local clusters</td>
+              </tr>
+              <tr>
+                <td><strong>Intel NUC / Beelink Mini-PC</strong></td>
+                <td><span class="badge-chip">linux/amd64</span></td>
+                <td>~350 MB</td>
+                <td>Small & Medium Enterprise (SME) on-premise gateway</td>
+              </tr>
+              <tr>
+                <td><strong>Proxmox VE / KVM / ESXi VM</strong></td>
+                <td><span class="badge-chip">amd64 / arm64</span></td>
+                <td>~400 MB</td>
+                <td>Virtualized reverse proxy and perimeter defense</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Attack Simulation Terminal -->
+  <section id="simulation">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">Instant Verification</div>
+        <h2>Real-Time Attack Interception</h2>
+        <p>Verify that your LynxWAF deployment is actively blocking threats using our automated PoC attack test suite.</p>
+      </div>
+
+      <div class="terminal-window">
+        <div class="terminal-bar">
+          <div class="terminal-circle c-red"></div>
+          <div class="terminal-circle c-yellow"></div>
+          <div class="terminal-circle c-green"></div>
+          <span class="terminal-title">bash ./test_poc_simulation.sh https://waf.example.com</span>
+        </div>
+        <div class="terminal-body">
+          <div><span class="t-cyan">[TEST 1/5]</span> Testing SQL Injection (UNION SELECT + Sleep Evasion)... <span class="t-red t-white">HTTP 403 FORBIDDEN</span> <span class="t-green">✔ [BLOCKED]</span></div>
+          <div><span class="t-cyan">[TEST 2/5]</span> Testing Stored/Reflected XSS (&lt;script&gt;alert(1)&lt;/script&gt;)... <span class="t-red t-white">HTTP 403 FORBIDDEN</span> <span class="t-green">✔ [BLOCKED]</span></div>
+          <div><span class="t-cyan">[TEST 3/5]</span> Testing Remote Code Execution (RCE: /bin/sh; id)... <span class="t-red t-white">HTTP 403 FORBIDDEN</span> <span class="t-green">✔ [BLOCKED]</span></div>
+          <div><span class="t-cyan">[TEST 4/5]</span> Testing Path Traversal / LFI (../../etc/passwd)... <span class="t-red t-white">HTTP 403 FORBIDDEN</span> <span class="t-green">✔ [BLOCKED]</span></div>
+          <div><span class="t-cyan">[TEST 5/5]</span> Testing Automated Vulnerability Scanner Probes... <span class="t-red t-white">HTTP 403 FORBIDDEN</span> <span class="t-green">✔ [BLOCKED]</span></div>
+          <div style="margin-top: 14px;"><span class="t-green">✔ ALL 5 ATTACK VECTORS BLOCKED BY LYNXWAF SEMANTIC ENGINE!</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start Guide -->
+  <section id="quickstart">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">Deployment Guide</div>
+        <h2>Up and Running in 2 Minutes</h2>
+        <p>Deploy via 1-line script or standard Docker Compose stack.</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="feature-card">
+          <div class="feature-icon">1️⃣</div>
+          <h3>Deploy Stack</h3>
+          <p>Run the 1-line automated installer on any fresh Linux server or Raspberry Pi running Ubuntu, Debian, or Rocky Linux.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">2️⃣</div>
+          <h3>Access Console</h3>
+          <p>Open <code>https://&lt;IP&gt;:8379</code> in your browser. Log in with your auto-generated cryptographically secure credentials.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">3️⃣</div>
+          <h3>Onboard Site</h3>
+          <p>Add your domain, set your upstream backend (e.g. <code>http://127.0.0.1:8080</code>), toggle Auto Let's Encrypt SSL, and point your DNS!</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container footer-inner">
+      <div>
+        <p><strong>LynxWAF Community Edition</strong> — Free forever for up to 3 domains.</p>
+        <p style="margin-top: 4px;">Copyright &copy; 2026 LynxWAF Team. Released under Apache License 2.0.</p>
+      </div>
+
+      <ul class="footer-links">
+        <li><a href="https://github.com/ones006/LynxWAF-CE" target="_blank">GitHub</a></li>
+        <li><a href="docs/QUICKSTART.md">Quick Start</a></li>
+        <li><a href="docs/OPERATOR_MANUAL.md">Operator Manual</a></li>
+        <li><a href="docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://t.me/onelynxs" target="_blank">Telegram Support</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstallCommand() {
+      const cmd = 'bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/install.sh)"';
+      navigator.clipboard.writeText(cmd).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.classList.add('copied');
+        btn.innerHTML = '✔ Copied to Clipboard!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg> Copy Command`;
+        }, 2500);
+      });
+    }
+  </script>
+</body>
+</html>
