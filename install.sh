@@ -261,6 +261,64 @@ prepare_environment() {
         chmod +x "$INSTALL_DIR/uninstall.sh" 2>/dev/null || true
     fi
 
+    # Initialize core OpenResty nginx.conf if not present
+    if [ ! -f "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
+        log_info "Initializing core OpenResty configuration (data/nginx/conf/nginx.conf)..."
+        curl -fsSL "${GITHUB_RAW}/data/nginx/conf/nginx.conf" -o "$INSTALL_DIR/data/nginx/conf/nginx.conf" 2>/dev/null || true
+        if [ ! -s "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
+            cat << 'EOF' > "$INSTALL_DIR/data/nginx/conf/nginx.conf"
+worker_processes auto;
+worker_rlimit_nofile 1000001;
+
+events {
+    worker_connections 65535;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /opt/lynxwaf/openresty/nginx/logs/access.log main;
+    error_log   /opt/lynxwaf/openresty/nginx/logs/error.log error;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout  65;
+    types_hash_max_size 4096;
+    server_names_hash_bucket_size 128;
+    client_max_body_size 100m;
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    include /etc/nginx/*.conf;
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/vhost/*.conf;
+    include /etc/nginx/user/*.conf;
+
+    server {
+        listen 80 default_server;
+        server_name _;
+
+        location / {
+            default_type text/html;
+            return 200 '<!DOCTYPE html><html><head><title>LynxWAF</title></head><body style="font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#0b0f19;color:#e2e8f0;"><h1 style="color:#38bdf8;">🛡️ LynxWAF Data Plane Active</h1><p style="color:#94a3b8;font-size:16px;">The WAF reverse proxy engine is operational. Access the Cyber-SOC console to configure protected domains.</p></body></html>\n';
+        }
+    }
+}
+EOF
+        fi
+    fi
+
     # Generate secure .env if not present
     if [ ! -f "$INSTALL_DIR/.env" ]; then
         log_info "Generating cryptographic credentials for database & cache..."

@@ -39,6 +39,7 @@ services:
       - ./data/nginx/logs:/opt/lynxwaf/openresty/nginx/logs:rw
       - ./data/nginx/logs:/www/wwwlogs:rw
       - ./data/nginx/logs:/usr/local/openresty/nginx/logs:rw
+      - ./data/nginx/conf/nginx.conf:/opt/lynxwaf/openresty/nginx/conf/nginx.conf:ro
       - ./data/nginx/conf.d:/etc/nginx:ro
       - ./data/wwwroot:/www/wwwroot:ro
       - /etc/localtime:/etc/localtime:ro
