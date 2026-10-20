@@ -1,6 +1,6 @@
-# LynxWAF Community Edition — Upgrade & Enterprise Migration Guide
+# LynxWAF Community Edition — Upgrade & License Activation Guide
 
-This guide describes how to update LynxWAF Community Edition to newer releases and how to seamlessly activate Enterprise Sovereign Edition.
+This guide describes how to update LynxWAF Community Edition to newer releases and how to seamlessly activate Sovereign Edition.
 
 ---
 
@@ -33,18 +33,18 @@ docker compose ps
 
 ---
 
-## 2. Upgrading to Enterprise Sovereign Edition
+## 2. Upgrading to Sovereign Edition
 
-LynxWAF Community Edition has built-in forward compatibility with the Enterprise Sovereign Edition. **No reinstall or server migration is required.**
+LynxWAF Community Edition has built-in forward compatibility with the Sovereign Edition. **No reinstall or server migration is required.**
 
-### Enterprise Feature Highlights:
+### Sovereign Feature Highlights:
 - **Unlimited Protected Domains** (removes the 3-domain CE limit).
 - **Multi-Node Active-Active HA Cluster** (Geo-Mesh Redis sync & VRRP keepalived).
 - **Kernel eBPF / XDP L4 Anti-DDoS** (Wire-speed <100ns packet dropping in Linux Ring 0).
 - **Outbound DLP Compliance Engine** (Automatic masking of NIK, Credit Cards, Bank Accounts under UU PDP No. 27/2022).
 - **Automated Compliance PDF Generator** (Official audit reports for PCI-DSS v4.0, ISO 27001, and SOC 2).
 - **White-Labeling & Reseller Branding** (Custom vendor logo, favicon, color themes for MSPs).
-- **24/7 Dedicated Support SLA**.
+- **Dedicated Support SLA**.
 
 ---
 
@@ -58,4 +58,4 @@ LynxWAF Community Edition has built-in forward compatibility with the Enterprise
 3. Navigate to **Settings ➔ License & Cryptography**.
 4. Upload your `lynxwaf.lic` file or paste the signed Ed25519 JSON token into the activation box.
 5. Click **Verify & Activate**.
-6. **Result**: All enterprise modules activate **instantly in memory without downtime or container restarts!**
+6. **Result**: All Sovereign modules activate **instantly in memory without downtime or container restarts!**

@@ -345,7 +345,7 @@ display_completion_banner() {
     echo -e "    You may safely accept the browser warning on initial login,"
     echo -e "    or bind your trusted domain certificate via the Web Console."
     echo ""
-    echo -e "  ${BOLD}Need Enterprise Multi-Node / Compliance Outbound DLP?${NC}"
+    echo -e "  ${BOLD}Need Sovereign Edition Multi-Node / Compliance Outbound DLP?${NC}"
     echo -e "    Contact via Telegram: ${BLUE}https://t.me/onelynxs${NC} (or email: ones006@gmail.com)"
     echo -e "${GREEN}${BOLD}========================================================================${NC}"
     echo ""

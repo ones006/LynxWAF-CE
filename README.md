@@ -20,7 +20,7 @@
   <a href="#-quick-start-1-line-installation">Quick Start</a> •
   <a href="#-key-features">Key Features</a> •
   <a href="#-homelab--small-business-hardware-appliance">Homelab & Raspberry Pi</a> •
-  <a href="#-feature-matrix-ce-vs-enterprise">CE vs Enterprise</a> •
+  <a href="#-feature-matrix-ce-vs-sovereign-edition">CE vs Sovereign Edition</a> •
   <a href="#-system-requirements">Requirements</a> •
   <a href="#-attack-simulation--testing">Testing & PoC</a> •
   <a href="docs/QUICKSTART.md">Documentation</a> •
@@ -108,11 +108,11 @@ docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path "mysecretpath"
 
 ---
 
-## 📊 Feature Matrix: CE vs Enterprise
+## 📊 Feature Matrix: CE vs Sovereign Edition
 
-LynxWAF Community Edition is **Free Forever** for up to 3 protected domains on a single standalone node. For multi-datacenter clusters and advanced compliance, upgrade seamlessly to **Enterprise Sovereign Edition**:
+LynxWAF Community Edition is **Free Forever** for up to 3 protected domains on a single standalone node. For multi-datacenter clusters and advanced compliance, upgrade seamlessly to **Sovereign Edition**:
 
-| Capability | Community Edition (CE) | Enterprise Sovereign Edition |
+| Capability | Community Edition (CE) | Sovereign Edition |
 | :--- | :---: | :---: |
 | **License Cost** | **Free Forever (Rp 0 / $0)** | Subscription OPEX / Perpetual CAPEX |
 | **Protected Domains** | **Up to 3 Domains** | 10 to Unlimited Domains |
@@ -226,14 +226,14 @@ cd /opt/lynxwaf && sudo ./uninstall.sh --purge-images
 
 ---
 
-## 🚀 Upgrading to Enterprise Sovereign Edition
+## 🚀 Upgrading to Sovereign Edition
 
-Upgrading from Community Edition to Enterprise Sovereign Edition requires **zero downtime and no re-installation**:
-1. Contact us via Telegram [**@onelynxs**](https://t.me/onelynxs) or email `ones006@gmail.com` to obtain an Ed25519-signed enterprise license (`lynxwaf.lic`).
+Upgrading from Community Edition to Sovereign Edition requires **zero downtime and no re-installation**:
+1. Contact us via Telegram [**@onelynxs**](https://t.me/onelynxs) or email `ones006@gmail.com` to obtain an Ed25519-signed license (`lynxwaf.lic`).
 2. Open your LynxWAF Web Console (`https://<IP>:8379`).
 3. Navigate to **Settings ➔ License & Cryptography**.
 4. Paste your signed `.lic` content and click **Activate**.
-5. All enterprise capabilities (eBPF XDP, AI Guardrails, Outbound DLP, unlimited domains) unlock **instantly in memory without container restarts**!
+5. All Sovereign capabilities (eBPF XDP, AI Guardrails, Outbound DLP, unlimited domains) unlock **instantly in memory without container restarts**!
 
 ---
 
