@@ -17,6 +17,7 @@ services:
     container_name: lynxwaf-openresty
     restart: always
     network_mode: "host" # High-throughput L4/L7 proxy with direct client IP preservation
+    user: "0:0"
     security_opt:
       - no-new-privileges:true
     cap_drop:
