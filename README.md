@@ -126,6 +126,7 @@ LynxWAF Community Edition is **Free Forever** for up to 3 protected domains on a
 | **Outbound DLP (UU PDP No. 27/2022)** | — | Included (Automatic NIK / Credit Card Masking) |
 | **Compliance PDF Generator** | — | Included (PCI-DSS v4.0, ISO 27001, SOC 2 Reports) |
 | **White-Labeling & Custom Branding** | — | Included (Reseller / MSP Ready) |
+| **Multi-Tenant MSP Portal** | — | Included (Sub-Organizations & Scope Isolation) |
 | **Support SLA** | GitHub Issues & Community | 24/7 Dedicated Support SLA & Phone Hotline |
 
 ---
