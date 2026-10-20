@@ -317,6 +317,10 @@ http {
 }
 EOF
         fi
+    # Initialize mime.types if not present
+    if [ ! -f "$INSTALL_DIR/data/nginx/conf/mime.types" ]; then
+        curl -fsSL "${GITHUB_RAW}/scripts/mime.types" -o "$INSTALL_DIR/data/nginx/conf/mime.types" 2>/dev/null || true
+    fi
     fi
 
     # Generate secure .env if not present
