@@ -85,6 +85,8 @@ services:
       - ./logs:/app/logs:rw
       - ./data:/app/data:rw
       - /etc/localtime:/etc/localtime:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - LYNXWAF_ENV=${LYNXWAF_ENV:-production}
       - LYNXWAF_PORT=8379
@@ -93,6 +95,7 @@ services:
       - REDIS_HOST=lynxwaf-redis
       - REDIS_PORT=6379
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-lynxwaf_admin_sec_2026}
+      - WAF_ENGINE_URL=${WAF_ENGINE_URL:-http://host.docker.internal}
     depends_on:
       lynxwaf-mysql:
         condition: service_healthy
