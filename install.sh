@@ -31,6 +31,11 @@ DEFAULT_PORT="8379"
 WAF_PORT="${DEFAULT_PORT}"
 NON_INTERACTIVE=false
 
+# Ensure valid working directory (in case caller was standing in a deleted folder)
+if ! pwd >/dev/null 2>&1; then
+    cd / 2>/dev/null || true
+fi
+
 # If running inside a git checkout or local folder with docker-compose.yml, use current directory
 if [ -f "./docker-compose.yml" ]; then
     INSTALL_DIR="$(pwd)"
