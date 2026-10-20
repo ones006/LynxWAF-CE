@@ -210,6 +210,21 @@ sudo bash update.sh
 
 ---
 
+## 🗑️ Uninstalling LynxWAF Community Edition
+
+To completely remove LynxWAF, stop all services, and wipe all local databases and configurations:
+
+```bash
+cd /opt/lynxwaf && sudo ./uninstall.sh
+```
+
+To purge cached container images from disk as well:
+```bash
+cd /opt/lynxwaf && sudo ./uninstall.sh --purge-images
+```
+
+---
+
 ## 🚀 Upgrading to Enterprise Sovereign Edition
 
 Upgrading from Community Edition to Enterprise Sovereign Edition requires **zero downtime and no re-installation**:

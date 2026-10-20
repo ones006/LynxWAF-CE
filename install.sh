@@ -250,6 +250,12 @@ prepare_environment() {
         chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
     fi
 
+    # Fetch uninstaller script if not present
+    if [ ! -f "$INSTALL_DIR/uninstall.sh" ]; then
+        curl -fsSL "${GITHUB_RAW}/uninstall.sh" -o "$INSTALL_DIR/uninstall.sh" 2>/dev/null || true
+        chmod +x "$INSTALL_DIR/uninstall.sh" 2>/dev/null || true
+    fi
+
     # Generate secure .env if not present
     if [ ! -f "$INSTALL_DIR/.env" ]; then
         log_info "Generating cryptographic credentials for database & cache..."
