@@ -290,6 +290,13 @@ start_stack() {
 
     $DOCKER_COMPOSE_CMD pull || log_warn "Pull completed or using local cached images."
 
+    # Initialize default configurations from container image if missing on host
+    if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
+        log_info "Extracting default configurations from daemon container image..."
+        docker run --rm -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest sh -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null || true' 2>/dev/null || true
+        chown -R 1000:1000 "$INSTALL_DIR/config" 2>/dev/null || true
+    fi
+
     log_info "Starting LynxWAF container services..."
     $DOCKER_COMPOSE_CMD up -d
 
