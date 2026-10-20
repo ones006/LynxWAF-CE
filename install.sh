@@ -256,6 +256,7 @@ prepare_environment() {
         MYSQL_SECRET=$(generate_random_secret 24)
         REDIS_SECRET=$(generate_random_secret 24)
         ADMIN_PASS=$(generate_random_secret 12)
+        AUTH_PATH=$(generate_random_secret 8)
 
         cat << EOF > "$INSTALL_DIR/.env"
 # LynxWAF Community Edition Configuration
@@ -267,6 +268,7 @@ LYNXWAF_OPENRESTY_IMAGE=ghcr.io/ones006/lynxwaf-openresty:ce-latest
 MYSQL_ROOT_PASSWORD=${MYSQL_SECRET}
 REDIS_PASSWORD=${REDIS_SECRET}
 INITIAL_ADMIN_PASSWORD=${ADMIN_PASS}
+SECURITY_ENTRANCE=${AUTH_PATH}
 LYNXWAF_VERSION=ce-latest
 EOF
         log_success "Configured credentials at: ${INSTALL_DIR}/.env"
@@ -274,8 +276,12 @@ EOF
         log_info "Existing .env detected at ${INSTALL_DIR}/.env. Preserving current secrets."
     fi
 
-    chmod 750 "$INSTALL_DIR"
+    chmod 755 "$INSTALL_DIR"
     chmod 600 "$INSTALL_DIR/.env"
+
+    # Grant read/write access to dedicated container non-root user (UID 1000: lynxwaf)
+    chown -R 1000:1000 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" 2>/dev/null || true
+    chmod -R 775 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" 2>/dev/null || true
 }
 
 start_stack() {
@@ -323,13 +329,27 @@ start_stack() {
 initialize_admin_user() {
     cd "$INSTALL_DIR"
     local admin_pwd=""
+    local desired_auth_path=""
     if [ -f ".env" ]; then
         admin_pwd=$(grep "^INITIAL_ADMIN_PASSWORD=" .env | cut -d '=' -f2- | tr -d '[:space:]')
+        desired_auth_path=$(grep "^SECURITY_ENTRANCE=" .env | cut -d '=' -f2- | tr -d '[:space:]' | tr -d '/')
     fi
 
     if [ -n "$admin_pwd" ]; then
         log_info "Provisioning default administrative credentials..."
         docker exec lynxwaf-daemon /app/LynxWaf create_default_user admin "$admin_pwd" >/dev/null 2>&1 || true
+    fi
+
+    # Provision Security Entrance if not yet configured
+    local current_auth_path
+    current_auth_path=$(docker exec lynxwaf-daemon /app/LynxWaf get_auth_path 2>/dev/null | tr -d '[:space:]/' || true)
+
+    if [ -z "$current_auth_path" ]; then
+        [ -z "$desired_auth_path" ] && desired_auth_path=$(generate_random_secret 8)
+        log_info "Configuring Security Entrance for Web Console..."
+        docker exec lynxwaf-daemon /app/LynxWaf set_auth_path "$desired_auth_path" >/dev/null 2>&1 || true
+    elif [ -n "$desired_auth_path" ] && [ "$current_auth_path" != "$desired_auth_path" ]; then
+        docker exec lynxwaf-daemon /app/LynxWaf set_auth_path "$desired_auth_path" >/dev/null 2>&1 || true
     fi
 }
 
@@ -343,12 +363,24 @@ display_completion_banner() {
     fi
     [ -z "$admin_pwd" ] && admin_pwd="(previously configured)"
 
+    local auth_path
+    auth_path=$(docker exec lynxwaf-daemon /app/LynxWaf get_auth_path 2>/dev/null | tr -d '[:space:]' || true)
+    if [ -z "$auth_path" ] && [ -f "$INSTALL_DIR/.env" ]; then
+        local env_path
+        env_path=$(grep "^SECURITY_ENTRANCE=" "$INSTALL_DIR/.env" | cut -d '=' -f2- | tr -d '[:space:]' | tr -d '/')
+        [ -n "$env_path" ] && auth_path="/${env_path}"
+    fi
+    [ -n "$auth_path" ] && [ "${auth_path:0:1}" != "/" ] && auth_path="/${auth_path}"
+
     echo ""
     echo -e "${GREEN}${BOLD}========================================================================${NC}"
     echo -e "${GREEN}${BOLD}       LynxWAF Community Edition Deployment Completed Successfully!     ${NC}"
     echo -e "${GREEN}${BOLD}========================================================================${NC}"
     echo ""
-    echo -e "  ${BOLD}Web Console URL${NC}   : ${CYAN}https://${host_ip}:${WAF_PORT}${NC}"
+    echo -e "  ${BOLD}Web Console URL${NC}   : ${CYAN}https://${host_ip}:${WAF_PORT}${auth_path}${NC}"
+    if [ -n "$auth_path" ]; then
+    echo -e "  ${BOLD}Security Entrance${NC} : ${YELLOW}${auth_path}${NC}"
+    fi
     echo -e "  ${BOLD}Default Username${NC}  : ${BOLD}admin${NC}"
     echo -e "  ${BOLD}Initial Password${NC}  : ${YELLOW}${admin_pwd}${NC}"
     echo -e "  ${BOLD}Deployment Path${NC}   : ${INSTALL_DIR}"
@@ -360,6 +392,9 @@ display_completion_banner() {
     echo -e "    • Restart Defense     : ${CYAN}cd ${INSTALL_DIR} && ${DOCKER_COMPOSE_CMD} restart${NC}"
     echo -e "    • Test WAF Protection : ${CYAN}cd ${INSTALL_DIR} && ./test_poc_simulation.sh https://${host_ip}${NC}"
     echo -e "    • Reset Password      : ${CYAN}docker exec -it lynxwaf-daemon /app/LynxWaf reset_password <new_pwd>${NC}"
+    echo -e "    • View Entrance Path  : ${CYAN}docker exec -it lynxwaf-daemon /app/LynxWaf get_auth_path${NC}"
+    echo -e "    • Reset Entrance Path : ${CYAN}docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path <new_path>${NC}"
+    echo -e "    • Disable Entrance    : ${CYAN}docker exec -it lynxwaf-daemon /app/LynxWaf disable_auth_path${NC}"
     echo ""
     echo -e "  ${BOLD}Note on HTTPS Certificate:${NC}"
     echo -e "    LynxWAF initializes with a self-signed TLS certificate."

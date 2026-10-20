@@ -61,8 +61,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/
 5. Provisions the initial `admin` account and outputs your Web Console URL!
 
 > **Web Console Access:**  
-> Navigate to `https://<YOUR_SERVER_IP>:8379`  
-> *(Default Username: `admin` | Password: displayed upon script completion)*
+> Navigate to `https://<YOUR_SERVER_IP>:8379/<SECURITY_ENTRANCE>`  
+> *(Default Username: `admin` | Password & Security Entrance: displayed upon script completion)*
 
 ---
 
@@ -86,6 +86,9 @@ docker compose up -d
 
 # 5. Create your administrator account
 docker exec -it lynxwaf-daemon /app/LynxWaf create_default_user admin "YourSecurePassword123!"
+
+# 6. Configure Security Entrance (admin URL safe path)
+docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path "mysecretpath"
 ```
 
 ---
