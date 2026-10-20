@@ -123,7 +123,7 @@ services:
       - CHOWN
       - DAC_OVERRIDE
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}"
       MYSQL_DATABASE: lynxwaf
     volumes:
       - ./data/mysql/data:/var/lib/mysql:rw
@@ -172,7 +172,7 @@ services:
       --appendonly no
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be set in .env}
+      --requirepass "${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be set in .env}"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be set in .env}", "ping"]
       interval: 10s
