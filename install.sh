@@ -203,7 +203,18 @@ ensure_docker() {
 
 generate_random_secret() {
     local len="${1:-24}"
-    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$len" 2>/dev/null || echo "lynxwaf_sec_$(date +%s)"
+    local secret=""
+    # Use head with finite buffer first to avoid SIGPIPE (exit code 141) under pipefail
+    secret=$(head -c 512 /dev/urandom 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-"$len" || true)
+    if [ -z "$secret" ] || [ "${#secret}" -lt "$len" ]; then
+        if command -v openssl >/dev/null 2>&1; then
+            secret=$(openssl rand -base64 48 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-"$len" || true)
+        fi
+    fi
+    if [ -z "$secret" ] || [ "${#secret}" -lt "$len" ]; then
+        secret="lynxwaf_sec_$(date +%s)"
+    fi
+    printf '%s' "$secret"
 }
 
 prepare_environment() {
@@ -284,7 +295,17 @@ start_stack() {
     while [ $attempts -lt $max_attempts ]; do
         sleep 2
         attempts=$((attempts + 1))
-        if $DOCKER_COMPOSE_CMD ps | grep -q "lynxwaf-daemon.*Up"; then
+
+        # 1. Primary check: inspect container status directly
+        local daemon_status
+        daemon_status=$(docker inspect -f '{{.State.Status}}' lynxwaf-daemon 2>/dev/null || true)
+        if [ "$daemon_status" = "running" ]; then
+            healthy=true
+            break
+        fi
+
+        # 2. Fallback check: inspect via compose ps
+        if $DOCKER_COMPOSE_CMD ps 2>/dev/null | grep -qiE "lynxwaf-daemon.*(up|running)"; then
             healthy=true
             break
         fi
