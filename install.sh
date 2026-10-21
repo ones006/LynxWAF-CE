@@ -267,6 +267,7 @@ prepare_environment() {
         curl -fsSL "${GITHUB_RAW}/data/nginx/conf/nginx.conf" -o "$INSTALL_DIR/data/nginx/conf/nginx.conf" 2>/dev/null || true
         if [ ! -s "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
             cat << 'EOF' > "$INSTALL_DIR/data/nginx/conf/nginx.conf"
+user lynxwaf lynxwaf;
 worker_processes auto;
 worker_rlimit_nofile 1000001;
 
