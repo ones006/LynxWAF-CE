@@ -264,7 +264,7 @@ prepare_environment() {
     # Initialize core OpenResty nginx.conf if not present
     if [ ! -f "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
         log_info "Initializing core OpenResty configuration (data/nginx/conf/nginx.conf)..."
-        curl -fsSL "${GITHUB_RAW}/data/nginx/conf/nginx.conf" -o "$INSTALL_DIR/data/nginx/conf/nginx.conf" 2>/dev/null || true
+        curl -fsSL "${GITHUB_RAW}/scripts/nginx.conf" -o "$INSTALL_DIR/data/nginx/conf/nginx.conf" 2>/dev/null || true
         if [ ! -s "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
             cat << 'EOF' > "$INSTALL_DIR/data/nginx/conf/nginx.conf"
 user lynxwaf lynxwaf;
