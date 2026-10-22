@@ -38,7 +38,7 @@ docker compose ps
 LynxWAF Community Edition has built-in forward compatibility with the Sovereign Edition. **No reinstall or server migration is required.**
 
 ### Sovereign Feature Highlights:
-- **Unlimited Protected Domains** (removes the 3-domain CE limit).
+- **Unlimited Protected Domains** (removes the 5-root-domain CE limit; Professional Edition covers 15 root domains before you need Sovereign).
 - **Multi-Node Active-Active HA Cluster** (Geo-Mesh Redis sync & VRRP keepalived).
 - **Kernel eBPF / XDP L4 Anti-DDoS** (Wire-speed <100ns packet dropping in Linux Ring 0).
 - **Outbound DLP Compliance Engine** (Automatic masking of NIK, Credit Cards, Bank Accounts under UU PDP No. 27/2022).
