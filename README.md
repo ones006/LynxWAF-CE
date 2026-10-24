@@ -225,16 +225,23 @@ dropped, which is the safe default but cannot attach an XDP program to a NIC. In
 mode the *Network Defense (L4)* console reports the datapath as unavailable and stores
 your settings as policy only — it never reports drops it did not make.
 
-To run the kernel datapath for real, start the daemon with the shipped overlay:
+To run the kernel datapath for real, fetch the overlay deliberately and start the
+daemon with it. The installer and `update.sh` never place it on your server, because
+it is a privileged file — and it stays inert until you name it with `-f`:
 
 ```bash
 cd /opt/lynxwaf
+sudo curl -fsSL \
+  https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/docker-compose.ebpf.yml \
+  -o docker-compose.ebpf.yml
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
-The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` and host networking; its header
-lists the trade-offs (console on port 8379 directly, root-owned files, XDP filtering
-before netfilter). Details: [Troubleshooting F](docs/TROUBLESHOOTING.md).
+The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` (nothing more) and host
+networking. That has consequences the header lists in full: the console listens on
+port 8379 on **every** interface — `LYNXWAF_BIND_IP` no longer applies, so filter it
+yourself — files under `config/`, `logs/` and `data/` become root-owned, and XDP
+drops happen before netfilter. Details: [Troubleshooting F](docs/TROUBLESHOOTING.md).
 
 ---
 

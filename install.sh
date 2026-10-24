@@ -289,16 +289,13 @@ prepare_environment() {
         curl -fsSL "${GITHUB_RAW}/docker-compose.yml" -o "$INSTALL_DIR/docker-compose.yml"
     fi
 
-    # Opt-in overlay for the kernel-level eBPF/XDP L4 datapath. Not used by the
-    # default "docker compose up"; kept here so the console's L4 page is not a
-    # dead end. See the file header for what enabling it implies.
-    if [ ! -f "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
-        log_info "Downloading optional eBPF/XDP overlay (docker-compose.ebpf.yml)..."
-        curl -fsSL "${GITHUB_RAW}/docker-compose.ebpf.yml" -o "$INSTALL_DIR/docker-compose.ebpf.yml" 2>/dev/null || true
-        if [ ! -s "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
-            rm -f "$INSTALL_DIR/docker-compose.ebpf.yml" 2>/dev/null || true
-            log_warn "Could not download docker-compose.ebpf.yml; the L4 datapath stays unavailable until it is present."
-        fi
+    # The kernel-level eBPF/XDP overlay is deliberately NOT downloaded here. It
+    # grants the daemon uid 0, CAP_BPF/CAP_NET_ADMIN and the host network
+    # namespace, so it must never land on a server by default - and it stays
+    # inert until an operator names it with -f anyway. Those who want it fetch it
+    # from the repository; see README "Kernel-Level L4 Defense".
+    if [ -f "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
+        log_warn "docker-compose.ebpf.yml is present from an earlier step. It is a privileged overlay: unused unless you pass -f docker-compose.ebpf.yml."
     fi
 
     # Verification / maintenance helpers: always brought in line with the repo

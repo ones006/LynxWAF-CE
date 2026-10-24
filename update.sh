@@ -166,14 +166,21 @@ else
     log_warn "Could not fetch update.sh from GitHub; continuing with the local copy."
 fi
 
-# Keep the stack files in step with upstream. The optional eBPF overlay is
-# included so an install that predates it can enable the L4 datapath without
-# hunting for the file.
+# Keep the stack files in step with upstream. The eBPF overlay is privileged
+# (uid 0, CAP_BPF + CAP_NET_ADMIN, host network namespace), so it is only kept
+# current for installs that already opted in: an update never places it on a
+# server by itself.
 sync_stack_file() {
     local name="$1"
+    local mode="${2:-required}"
     local tmp="${SCRIPT_DIR}/${name}.upstream"
     local local_path="${SCRIPT_DIR}/${name}"
     local was_present=false
+
+    if [ "$mode" = "optional" ] && [ ! -f "$local_path" ]; then
+        log_info "${name} is not installed; keeping it absent. It is an opt-in privileged overlay - fetch it from the repository only if you intend to use -f with it."
+        return
+    fi
 
     if ! fetch_checked "${GITHUB_RAW}/${name}" "$tmp" "lynxwaf-daemon"; then
         rm -f "$tmp"
@@ -208,7 +215,7 @@ sync_stack_file() {
     if [ "$was_present" = true ]; then
         log_success "${name} updated to upstream (previous copy kept as ${name}.bak.<timestamp>)"
     else
-        log_success "${name} installed from upstream (it is opt-in; the stack only uses it when passed with -f or COMPOSE_FILE)"
+        log_success "${name} created from upstream (the stack only uses it when passed with -f or COMPOSE_FILE)"
     fi
 
     # Only a change to a file the running stack actually consumes needs a recreate.
@@ -220,7 +227,7 @@ sync_stack_file() {
 }
 
 sync_stack_file "docker-compose.yml"
-sync_stack_file "docker-compose.ebpf.yml"
+sync_stack_file "docker-compose.ebpf.yml" optional
 
 # ------------------------------------------------------------------------------
 # 3. Snapshot the images that are running now

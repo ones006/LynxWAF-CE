@@ -119,28 +119,33 @@ network card needs `CAP_BPF` + `CAP_NET_ADMIN` in the host network namespace, so
 daemon cannot do it — and it says so instead of pretending the kernel is filtering.
 Your L4 settings are stored and will take effect the moment a datapath is attached.
 
-**To make the L4 datapath real**, start the daemon with the opt-in overlay shipped in
-this repository (`docker-compose.ebpf.yml`). `update.sh` downloads it automatically;
-otherwise fetch it once:
+**To make the L4 datapath real**, fetch the opt-in overlay from this repository and use
+it. `install.sh` and `update.sh` deliberately do not download it — the file grants root
+and kernel privileges to the daemon, so it must be an operator decision. It also stays
+inert until you pass it with `-f`:
 
 ```bash
 cd /opt/lynxwaf
-[ -f docker-compose.ebpf.yml ] || sudo curl -fsSL \
+sudo curl -fsSL \
   https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/docker-compose.ebpf.yml \
   -o docker-compose.ebpf.yml
 
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
+Once the file is in place, later `update.sh` runs keep it in step with upstream (they
+never add it back after you delete it).
+
 Then reload *Network Defense (L4)*: the interface list now shows the host NICs, and
 after enabling mitigation the status becomes `ATTACHED` with live counters.
 
 Read the header of `docker-compose.ebpf.yml` before enabling it. In short: the daemon
-joins the host network namespace (the console listens on port 8379 directly and the
-base `ports:` mapping is ignored), MySQL/Redis are reached through their published
-loopback ports, the process runs as root so files under `config/`, `logs/` and `data/`
-become root-owned, and XDP drops happen before netfilter — keep SSH and the console
-port in the allowed TCP list or you can lock yourself out.
+joins the host network namespace (the console listens on port 8379 directly, the base
+`ports:` mapping is ignored **and `LYNXWAF_BIND_IP` no longer restricts it** — bind the
+console to a firewall or a reverse proxy first), MySQL/Redis are reached through their
+published loopback ports, the process runs as root so files under `config/`, `logs/` and
+`data/` become root-owned, and XDP drops happen before netfilter — keep SSH and the
+console port in the allowed TCP list or you can lock yourself out.
 
 **Still unavailable with the overlay?** The kernel or virtual NIC is the limit, not
 the container:
