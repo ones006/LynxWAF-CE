@@ -158,6 +158,7 @@ services:
     cap_add:
       - BPF
       - NET_ADMIN
+      - SYS_ADMIN
     # Kernels before 5.11 account BPF memory against RLIMIT_MEMLOCK.
     ulimits:
       memlock: -1

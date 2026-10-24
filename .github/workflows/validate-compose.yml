@@ -22,11 +22,12 @@ jobs:
         run: |
           docker compose config --quiet
           # The eBPF/XDP overlay is no longer a file in this repository - it grants
-          # uid 0, CAP_BPF/CAP_NET_ADMIN and the host network namespace, so it must
-          # not be distributed as source. Operators write what the documentation
-          # shows, therefore the documented snippet is the thing that has to merge
-          # with the base stack: if it drifts, the failure belongs here and not on
-          # an operator's server. Canonical text: modules/ebpf_overlay.go upstream.
+          # uid 0, CAP_BPF/CAP_NET_ADMIN/CAP_SYS_ADMIN and the host network
+          # namespace, so it must not be distributed as source. Operators write what
+          # the documentation shows, therefore the documented snippet is the thing
+          # that has to merge with the base stack: if it drifts, the failure belongs
+          # here and not on an operator's server. Canonical text:
+          # modules/ebpf_overlay.go upstream.
           awk '/LYNXWAF-XDP-OVERLAY-START/{f=1;next} /LYNXWAF-XDP-OVERLAY-END/{f=0} f && !/^```/' docs/TROUBLESHOOTING.md > docker-compose.ebpf.yml
           test -s docker-compose.ebpf.yml
           grep -q '^services:$' docker-compose.ebpf.yml
@@ -37,8 +38,10 @@ jobs:
           # the base stack keeps its own caps for mysql/redis.
           effective="$(grep -v '^[[:space:]]*#' docker-compose.ebpf.yml)"
           echo "$effective" | grep -A2 '^    cap_add:' | grep -q 'BPF'
-          test "$(echo "$effective" | sed -n '/cap_add:/,/ulimits:/p' | grep -c '^      - ')" -eq 2
-          ! echo "$effective" | grep -qE 'NET_RAW|DAC_OVERRIDE|SYS_ADMIN|NET_BIND_SERVICE|SETUID|SETGID'
+          echo "$effective" | grep -A2 '^    cap_add:' | grep -q 'NET_ADMIN'
+          echo "$effective" | grep -A3 '^    cap_add:' | grep -q 'SYS_ADMIN'
+          test "$(echo "$effective" | sed -n '/cap_add:/,/ulimits:/p' | grep -c '^      - ')" -eq 3
+          ! echo "$effective" | grep -qE 'NET_RAW|DAC_OVERRIDE|NET_BIND_SERVICE|SETUID|SETGID'
           rm -f docker-compose.ebpf.yml
 
       - name: Validate Shell Scripts Syntax
