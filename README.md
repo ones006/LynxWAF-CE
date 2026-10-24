@@ -227,9 +227,9 @@ your settings as policy only — it never reports drops it did not make.
 
 To run the kernel datapath for real, generate the overlay on the server and start the
 daemon with it. It is deliberately **not a file in this repository**: it grants uid 0,
-`CAP_BPF`/`CAP_NET_ADMIN` and the host network namespace, so nothing privileged lands on
-your machine through an installer, an update or a clone. The shipped image produces its
-own overlay, which keeps the text and the feature in the same place:
+`CAP_BPF`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN` and the host network namespace, so nothing
+privileged lands on your machine through an installer, an update or a clone. The shipped
+image produces its own overlay, which keeps the text and the feature in the same place:
 
 ```bash
 cd /opt/lynxwaf
@@ -241,12 +241,26 @@ sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --for
 The file stays inert until you name it with `-f`. `update.sh` does not refresh it any
 more — once it is yours, comparing and replacing it is an operator decision.
 
-The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` (nothing more) and host
-networking. That has consequences: the console listens on port 8379 on **every**
-interface — `LYNXWAF_BIND_IP` no longer applies, so filter it yourself — files under
-`config/`, `logs/` and `data/` become root-owned, and XDP drops happen before
-netfilter. Full list and the manual/air-gapped variant of the file: [Troubleshooting
-F](docs/TROUBLESHOOTING.md).
+The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` + `CAP_SYS_ADMIN` and host
+networking. `SYS_ADMIN` is required by the kernel BPF verifier for pointer arithmetic
+inside `xdp_filter.c` (relaxed in kernel 6.7+). That has consequences: the console
+listens on port 8379 on **every** interface — `LYNXWAF_BIND_IP` no longer applies, so
+filter it yourself — files under `config/`, `logs/`, `data/` and `ssl/` become
+root-owned, and XDP drops happen before netfilter. Full list and the manual/air-gapped
+variant of the file: [Troubleshooting F](docs/TROUBLESHOOTING.md).
+
+### XDP Attachment Modes
+
+| Mode | Latency | Requirement |
+| --- | --- | --- |
+| **Generic** (default) | ~200–500 ns | Any Linux kernel ≥ 4.13, any NIC |
+| **Native** | < 100 ns | NIC driver must support `.ndo_bpf` (Intel i225/i226/i210/X520/E810, Realtek RTL8125/8168, Mellanox ConnectX-4+, Broadcom BCM5720) |
+| **Hardware Offload** | < 20 ns | SmartNIC only: NVIDIA ConnectX-4/5/6/7, Netronome NFP3800/4000, Intel E810-C (kernel ≥ 6.1) |
+
+Start with **Generic**; switch to **Native** if your NIC supports it (check:
+`ethtool -i <iface> | grep driver`). Hardware Offload is for 100G+ deployments.
+Full NIC compatibility table and verifier details:
+[docs/EBPF_XDP_DATAPATH.md §6](https://g.thinkm.id/TangaraMitrakom/LynxWAF/src/main/docs/EBPF_XDP_DATAPATH.md) (main repo).
 
 ---
 
