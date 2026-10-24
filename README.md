@@ -110,12 +110,12 @@ docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path "mysecretpath"
 
 ## 📊 Feature Matrix: CE vs Sovereign Edition
 
-LynxWAF Community Edition is **Free Forever** for up to 5 protected root domains (unlimited subdomains) on a single standalone node. Need more? **Professional Edition** covers 15 root domains at Rp 1.500.000 / node / month, and **Sovereign Edition** unlocks unlimited domains plus the full enterprise stack:
+LynxWAF Community Edition is **Free Forever** for 1 protected root domain (unlimited subdomains) on a single standalone node. Need more? **Professional Edition** covers 15 root domains at Rp 1.500.000 / node / month, and **Sovereign Edition** unlocks unlimited domains plus the full enterprise stack:
 
 | Capability | Community Edition (CE) | Sovereign Edition |
 | :--- | :---: | :---: |
 | **License Cost** | **Free Forever (Rp 0 / $0)** | Subscription OPEX / Perpetual CAPEX |
-| **Protected Domains** | **Up to 5 Root Domains** | 15 (Professional) to Unlimited (Sovereign) |
+| **Protected Domains** | **1 Root Domain** | 15 (Professional) to Unlimited (Sovereign) |
 | **Node Cluster Nodes** | **1 Standalone Node** | Multi-Node Active-Active HA Cluster |
 | **Semantic AST L7 Inspection** | Included | Included |
 | **Silent PoW Anti-Bot Defense** | Included | Included |
@@ -259,5 +259,5 @@ Upgrading from Community Edition to Sovereign Edition requires **zero downtime a
 ## 📄 License
 
 - Deployment orchestration templates, compose stacks, and documentation are licensed under the **[Apache License 2.0](LICENSE)**.
-- LynxWAF Community Edition container binaries are provided **Free Forever** for personal and commercial production use up to 5 protected root domains (unlimited subdomains) on 1 standalone node.
+- LynxWAF Community Edition container binaries are provided **Free Forever** for personal and commercial production use on 1 protected root domain (unlimited subdomains) on 1 standalone node.
 - Copyright (c) 2026 LynxWAF Team. All Rights Reserved.

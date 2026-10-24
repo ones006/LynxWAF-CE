@@ -517,7 +517,7 @@ display_completion_banner() {
     echo -e "  ${BOLD}Default Username${NC}  : ${BOLD}admin${NC}"
     echo -e "  ${BOLD}Initial Password${NC}  : ${YELLOW}${admin_pwd}${NC}"
     echo -e "  ${BOLD}Deployment Path${NC}   : ${INSTALL_DIR}"
-    echo -e "  ${BOLD}License Mode${NC}      : ${GREEN}Community Edition (Free Forever · Up to 5 Root Domains · 1 Node)${NC}"
+    echo -e "  ${BOLD}License Mode${NC}      : ${GREEN}Community Edition (Free Forever · 1 Root Domain · 1 Node)${NC}"
     echo ""
     echo -e "  ${BOLD}Useful Management Commands:${NC}"
     echo -e "    • View Service Status : ${CYAN}cd ${INSTALL_DIR} && ${DOCKER_COMPOSE_CMD} ps${NC}"
