@@ -289,13 +289,14 @@ prepare_environment() {
         curl -fsSL "${GITHUB_RAW}/docker-compose.yml" -o "$INSTALL_DIR/docker-compose.yml"
     fi
 
-    # The kernel-level eBPF/XDP overlay is deliberately NOT downloaded here. It
-    # grants the daemon uid 0, CAP_BPF/CAP_NET_ADMIN and the host network
-    # namespace, so it must never land on a server by default - and it stays
-    # inert until an operator names it with -f anyway. Those who want it fetch it
-    # from the repository; see README "Kernel-Level L4 Defense".
+    # The kernel-level eBPF/XDP overlay is deliberately NOT downloaded here - it
+    # is not in the repository at all any more. It grants the daemon uid 0,
+    # CAP_BPF/CAP_NET_ADMIN and the host network namespace, so a privileged
+    # artefact must never land on a server by default. An operator who wants the
+    # L4 datapath generates it on this host; see README "Kernel-Level L4 Defense
+    # (eBPF / XDP) - Opt-In".
     if [ -f "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
-        log_warn "docker-compose.ebpf.yml is present from an earlier step. It is a privileged overlay: unused unless you pass -f docker-compose.ebpf.yml."
+        log_warn "docker-compose.ebpf.yml is present from an earlier release. It is a privileged overlay, it is unused unless you pass -f docker-compose.ebpf.yml, and update.sh no longer refreshes it - regenerate it deliberately if you still need it."
     fi
 
     # Verification / maintenance helpers: always brought in line with the repo

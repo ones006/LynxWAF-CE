@@ -119,33 +119,75 @@ network card needs `CAP_BPF` + `CAP_NET_ADMIN` in the host network namespace, so
 daemon cannot do it — and it says so instead of pretending the kernel is filtering.
 Your L4 settings are stored and will take effect the moment a datapath is attached.
 
-**To make the L4 datapath real**, fetch the opt-in overlay from this repository and use
-it. `install.sh` and `update.sh` deliberately do not download it — the file grants root
-and kernel privileges to the daemon, so it must be an operator decision. It also stays
-inert until you pass it with `-f`:
+**To make the L4 datapath real**, write the opt-in overlay on this host and start the
+daemon with it. The overlay is **not a file in this repository**: it grants the daemon
+uid 0, `CAP_BPF` + `CAP_NET_ADMIN` and the host network namespace, so a privileged
+artefact must never reach a server through an installer, an update sync or a
+`git clone`. You generate it deliberately, and it stays inert until you pass it with
+`-f`.
+
+Recommended — ask the image you already run for its own overlay, so the text cannot be
+out of date (needs `lynxwaf-daemon` `v26.10.24.5` or newer):
 
 ```bash
 cd /opt/lynxwaf
-sudo curl -fsSL \
-  https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/docker-compose.ebpf.yml \
-  -o docker-compose.ebpf.yml
-
+docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay > docker-compose.ebpf.yml
+chmod 600 docker-compose.ebpf.yml
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
-Once the file is in place, later `update.sh` runs keep it in step with upstream (they
-never add it back after you delete it).
+On an older image, or on an air-gapped host, save this block as `docker-compose.ebpf.yml`
+yourself. It is the effective content of the generated file (the generated one adds a
+comment header with the same consequences listed below), and CI re-validates it against
+the base stack on every push — so a typo here fails the pipeline instead of your server:
+
+<!-- LYNXWAF-XDP-OVERLAY-START: kept in sync with modules/ebpf_overlay.go -->
+```yaml
+services:
+  lynxwaf-daemon:
+    network_mode: "host"
+    user: "0:0"
+    # Only what an XDP attach needs: CAP_BPF to load the program, CAP_NET_ADMIN to
+    # hook it onto the NIC. NET_RAW, DAC_OVERRIDE, SETUID, SETGID and NET_BIND_SERVICE
+    # are absent on purpose — the process is already uid 0, so they would only widen
+    # the blast radius.
+    cap_drop:
+      - ALL
+    cap_add:
+      - BPF
+      - NET_ADMIN
+    # Kernels before 5.11 account BPF memory against RLIMIT_MEMLOCK.
+    ulimits:
+      memlock: -1
+    environment:
+      # Quoted as strings: the base file declares these as KEY=value strings, and
+      # podman-compose refuses to merge an int over a string.
+      DB_HOST: 127.0.0.1
+      DB_PORT: "33060"
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "33060"
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      WAF_ENGINE_URL: http://127.0.0.1
+      # Absolute path inside the image; the loader validates it before use.
+      LYNXWAF_XDP_OBJECT: /app/ebpf/xdp_filter.o
+```
+<!-- LYNXWAF-XDP-OVERLAY-END -->
+
+`update.sh` no longer refreshes this file, because upstream no longer distributes it. If
+you keep a copy, keeping it current is your call: regenerate it, `diff` it against yours,
+then replace it deliberately.
 
 Then reload *Network Defense (L4)*: the interface list now shows the host NICs, and
 after enabling mitigation the status becomes `ATTACHED` with live counters.
 
-Read the header of `docker-compose.ebpf.yml` before enabling it. In short: the daemon
-joins the host network namespace (the console listens on port 8379 directly, the base
-`ports:` mapping is ignored **and `LYNXWAF_BIND_IP` no longer restricts it** — bind the
-console to a firewall or a reverse proxy first), MySQL/Redis are reached through their
-published loopback ports, the process runs as root so files under `config/`, `logs/` and
-`data/` become root-owned, and XDP drops happen before netfilter — keep SSH and the
-console port in the allowed TCP list or you can lock yourself out.
+Understand what the overlay does before you enable it. The daemon joins the host network
+namespace (the console listens on port 8379 directly, the base `ports:` mapping is
+ignored **and `LYNXWAF_BIND_IP` no longer restricts it** — bind the console to a
+firewall or a reverse proxy first), MySQL/Redis are reached through their published
+loopback ports, the process runs as root so files under `config/`, `logs/` and `data/`
+become root-owned, and XDP drops happen before netfilter — keep SSH and the console port
+in the allowed TCP list or you can lock yourself out.
 
 **Still unavailable with the overlay?** The kernel or virtual NIC is the limit, not
 the container:

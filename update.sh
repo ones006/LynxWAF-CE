@@ -166,21 +166,16 @@ else
     log_warn "Could not fetch update.sh from GitHub; continuing with the local copy."
 fi
 
-# Keep the stack files in step with upstream. The eBPF overlay is privileged
-# (uid 0, CAP_BPF + CAP_NET_ADMIN, host network namespace), so it is only kept
-# current for installs that already opted in: an update never places it on a
-# server by itself.
+# Keep the stack file in step with upstream. The privileged eBPF/XDP overlay is
+# deliberately NOT synced: it is no longer distributed as a file at all, because
+# it grants uid 0, CAP_BPF + CAP_NET_ADMIN and the host network namespace. An
+# operator who wants it generates it on this host - see docs/TROUBLESHOOTING.md
+# section F.
 sync_stack_file() {
     local name="$1"
-    local mode="${2:-required}"
     local tmp="${SCRIPT_DIR}/${name}.upstream"
     local local_path="${SCRIPT_DIR}/${name}"
     local was_present=false
-
-    if [ "$mode" = "optional" ] && [ ! -f "$local_path" ]; then
-        log_info "${name} is not installed; keeping it absent. It is an opt-in privileged overlay - fetch it from the repository only if you intend to use -f with it."
-        return
-    fi
 
     if ! fetch_checked "${GITHUB_RAW}/${name}" "$tmp" "lynxwaf-daemon"; then
         rm -f "$tmp"
@@ -215,7 +210,7 @@ sync_stack_file() {
     if [ "$was_present" = true ]; then
         log_success "${name} updated to upstream (previous copy kept as ${name}.bak.<timestamp>)"
     else
-        log_success "${name} created from upstream (the stack only uses it when passed with -f or COMPOSE_FILE)"
+        log_success "${name} created from upstream (it was missing, and the stack needs it)"
     fi
 
     # Only a change to a file the running stack actually consumes needs a recreate.
@@ -227,7 +222,14 @@ sync_stack_file() {
 }
 
 sync_stack_file "docker-compose.yml"
-sync_stack_file "docker-compose.ebpf.yml" optional
+
+# A leftover overlay from an older release stays on disk - deleting it would be
+# an unannounced change to a stack that may be running with it - but upstream no
+# longer distributes it, so this run will not refresh it and it can drift.
+if [ -f "${SCRIPT_DIR}/docker-compose.ebpf.yml" ]; then
+    log_warn "docker-compose.ebpf.yml is present from an earlier release. Upstream no longer distributes that file, so this update leaves it untouched and it may drift. It changes nothing unless you pass -f with it."
+    log_warn "To regenerate the current text: docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay > docker-compose.ebpf.yml.new, then diff it against yours and replace it deliberately."
+fi
 
 # ------------------------------------------------------------------------------
 # 3. Snapshot the images that are running now

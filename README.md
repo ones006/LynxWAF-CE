@@ -225,23 +225,28 @@ dropped, which is the safe default but cannot attach an XDP program to a NIC. In
 mode the *Network Defense (L4)* console reports the datapath as unavailable and stores
 your settings as policy only — it never reports drops it did not make.
 
-To run the kernel datapath for real, fetch the overlay deliberately and start the
-daemon with it. The installer and `update.sh` never place it on your server, because
-it is a privileged file — and it stays inert until you name it with `-f`:
+To run the kernel datapath for real, generate the overlay on the server and start the
+daemon with it. It is deliberately **not a file in this repository**: it grants uid 0,
+`CAP_BPF`/`CAP_NET_ADMIN` and the host network namespace, so nothing privileged lands on
+your machine through an installer, an update or a clone. The shipped image produces its
+own overlay, which keeps the text and the feature in the same place:
 
 ```bash
 cd /opt/lynxwaf
-sudo curl -fsSL \
-  https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/docker-compose.ebpf.yml \
-  -o docker-compose.ebpf.yml
+docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay > docker-compose.ebpf.yml
+chmod 600 docker-compose.ebpf.yml
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
+The file stays inert until you name it with `-f`. `update.sh` does not refresh it any
+more — once it is yours, comparing and replacing it is an operator decision.
+
 The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` (nothing more) and host
-networking. That has consequences the header lists in full: the console listens on
-port 8379 on **every** interface — `LYNXWAF_BIND_IP` no longer applies, so filter it
-yourself — files under `config/`, `logs/` and `data/` become root-owned, and XDP
-drops happen before netfilter. Details: [Troubleshooting F](docs/TROUBLESHOOTING.md).
+networking. That has consequences: the console listens on port 8379 on **every**
+interface — `LYNXWAF_BIND_IP` no longer applies, so filter it yourself — files under
+`config/`, `logs/` and `data/` become root-owned, and XDP drops happen before
+netfilter. Full list and the manual/air-gapped variant of the file: [Troubleshooting
+F](docs/TROUBLESHOOTING.md).
 
 ---
 

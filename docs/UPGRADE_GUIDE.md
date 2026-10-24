@@ -43,7 +43,7 @@ half-applied stack:
 | Phase | Behaviour |
 | --- | --- |
 | 1. Preflight | Verifies `docker-compose.yml` and `.env` exist, finds the compose engine (v2 plugin or `docker-compose`), confirms the Docker daemon answers, warns on low free space. |
-| 2. Self-sync | Refreshes `update.sh` and `docker-compose.yml` from GitHub, plus `docker-compose.ebpf.yml` **only when your install already has that overlay** — an update never adds the privileged file by itself. Downloaded files must pass a content sanity check; the previous copies are kept as `*.bak.<timestamp>`. A replaced updater re-execs itself once. |
+| 2. Self-sync | Refreshes `update.sh` and `docker-compose.yml` from GitHub. The privileged `docker-compose.ebpf.yml` is **no longer distributed or synced at all**: if a copy from an older release is present the updater leaves it untouched and warns that it can drift — regenerating it is an operator action (Troubleshooting F). Downloaded files must pass a content sanity check; the previous copies are kept as `*.bak.<timestamp>`. A replaced updater re-execs itself once. |
 | 3. Snapshot | Writes image ID **and registry digest** of the daemon and data plane to `logs/pre-update-<timestamp>.txt` before anything is pulled. |
 | 4. Backup | Tars `config/` and `data/nginx/` into `backups/pre-update-<timestamp>.tgz` (mode 600). Add `--db-backup` for a `mysqldump` of `lynxwaf_db`. |
 | 5. Pull | `docker compose pull`. |
