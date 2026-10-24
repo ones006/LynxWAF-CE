@@ -207,7 +207,14 @@ docker exec -it lynxwaf-daemon /app/LynxWaf reset_password "NewStrongPassword123
 
 # Update to latest Community Edition release
 sudo bash update.sh
+
+# Preview an update without changing anything
+sudo bash update.sh --dry-run
 ```
+
+> `update.sh` records the running image digests in `logs/`, backs up `config/` and
+> `data/nginx/` into `backups/`, then validates the stack and prints the root-domain
+> allowance it is now running under. Rollback and flags: [docs/UPGRADE_GUIDE.md](docs/UPGRADE_GUIDE.md).
 
 ---
 

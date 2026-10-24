@@ -33,6 +33,12 @@ dist/
 tmp/
 temp/
 
+# Updater snapshots: pre-update backups and stack-file copies kept before overwrite
+backups/
+*.bak
+*.bak.*
+docker-compose.yml.upstream
+
 # OS and Editor metadata
 .DS_Store
 .DS_Store?

@@ -25,4 +25,32 @@ jobs:
         run: |
           bash -n install.sh
           bash -n update.sh
+          bash -n uninstall.sh
           bash -n test_poc_simulation.sh
+
+      # Walks the updater through preflight, self-sync, snapshot and the dry-run
+      # exit using a throwaway install tree and a stubbed docker CLI, so a
+      # regression in update.sh fails here instead of on an operator's server.
+      - name: Dry-run the updater against a synthetic install
+        run: |
+          set -eo pipefail
+          work="$(mktemp -d)"
+          mkdir -p "$work/bin" "$work/inst/config" "$work/inst/data/nginx"
+          cp update.sh "$work/inst/update.sh"
+          cp docker-compose.yml "$work/inst/docker-compose.yml"
+          cp .env "$work/inst/.env"
+          echo '{"data":{"tier":"community","max_domains":1},"signature":"x"}' > "$work/inst/config/lynxwaf.lic"
+          cat > "$work/bin/docker" <<'SHIM'
+          #!/usr/bin/env bash
+          case "$1" in
+            info) exit 0 ;;
+            compose) exit 0 ;;
+            image) echo "sha256:0000000000000000"; exit 0 ;;
+            inspect) echo "true"; exit 0 ;;
+            exec) echo "ci-dry-run"; exit 0 ;;
+            *) exit 0 ;;
+          esac
+          SHIM
+          chmod +x "$work/bin/docker"
+          PATH="$work/bin:$PATH" bash "$work/inst/update.sh" --dry-run
+          test -s "$work/inst"/logs/pre-update-*.txt

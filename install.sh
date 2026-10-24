@@ -76,6 +76,43 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Keep the helper scripts current. Fetching them only when missing used to strand
+# existing installs on an old updater, so fixes never reached the field.
+sync_repo_script() {
+    local name="$1"
+    local marker="$2"
+    local tmp="/tmp/lynxwaf-${name}.part.$$"
+
+    if ! curl -fsSL --connect-timeout 10 --max-time 60 "${GITHUB_RAW}/${name}" -o "$tmp" 2>/dev/null; then
+        log_warn "Could not download ${name} from GitHub. Keeping the local copy."
+        rm -f "$tmp" 2>/dev/null || true
+        return
+    fi
+    if [ ! -s "$tmp" ]; then
+        log_warn "Downloaded ${name} is empty. Keeping the local copy."
+        rm -f "$tmp" 2>/dev/null || true
+        return
+    fi
+    if [ -n "$marker" ] && ! grep -q "$marker" "$tmp"; then
+        log_warn "Downloaded ${name} failed the content sanity check. Keeping the local copy."
+        rm -f "$tmp" 2>/dev/null || true
+        return
+    fi
+
+    if [ -f "$INSTALL_DIR/$name" ] && cmp -s "$tmp" "$INSTALL_DIR/$name"; then
+        log_info "${name} is already current"
+        rm -f "$tmp" 2>/dev/null || true
+        return
+    fi
+
+    if [ -f "$INSTALL_DIR/$name" ]; then
+        cp -p "$INSTALL_DIR/$name" "$INSTALL_DIR/$name.bak" 2>/dev/null || true
+    fi
+    mv "$tmp" "$INSTALL_DIR/$name"
+    chmod +x "$INSTALL_DIR/$name" 2>/dev/null || true
+    log_success "Installed/refreshed ${name}"
+}
+
 # Parse Command-Line Arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -250,24 +287,10 @@ prepare_environment() {
         curl -fsSL "${GITHUB_RAW}/docker-compose.yml" -o "$INSTALL_DIR/docker-compose.yml"
     fi
 
-    # Fetch verification script if not present
-    if [ ! -f "$INSTALL_DIR/test_poc_simulation.sh" ]; then
-        log_info "Downloading attack simulation tool (test_poc_simulation.sh)..."
-        curl -fsSL "${GITHUB_RAW}/test_poc_simulation.sh" -o "$INSTALL_DIR/test_poc_simulation.sh" 2>/dev/null || true
-        chmod +x "$INSTALL_DIR/test_poc_simulation.sh" 2>/dev/null || true
-    fi
-
-    # Fetch updater script if not present
-    if [ ! -f "$INSTALL_DIR/update.sh" ]; then
-        curl -fsSL "${GITHUB_RAW}/update.sh" -o "$INSTALL_DIR/update.sh" 2>/dev/null || true
-        chmod +x "$INSTALL_DIR/update.sh" 2>/dev/null || true
-    fi
-
-    # Fetch uninstaller script if not present
-    if [ ! -f "$INSTALL_DIR/uninstall.sh" ]; then
-        curl -fsSL "${GITHUB_RAW}/uninstall.sh" -o "$INSTALL_DIR/uninstall.sh" 2>/dev/null || true
-        chmod +x "$INSTALL_DIR/uninstall.sh" 2>/dev/null || true
-    fi
+    # Verification / maintenance helpers: always brought in line with the repo
+    sync_repo_script "test_poc_simulation.sh" "SIMULASI SERANGAN POC"
+    sync_repo_script "update.sh" "In-Place Updater"
+    sync_repo_script "uninstall.sh" "Clean & Total Uninstaller"
 
     # Initialize core OpenResty nginx.conf if not present
     if [ ! -f "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
