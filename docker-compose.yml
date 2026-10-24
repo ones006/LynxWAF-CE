@@ -32,6 +32,9 @@ services:
       - ./data/nginx/logs:/usr/local/openresty/nginx/logs:rw
       - ./data/nginx/conf:/opt/lynxwaf/openresty/nginx/conf:ro
       - ./data/nginx/conf.d:/etc/nginx:ro
+      # The WAF engine must append rule hits here; without a writable child mount
+      # the interception log stays empty on every fresh install.
+      - ./data/nginx/conf.d/waf/data:/etc/nginx/waf/data:rw
       - ./data/wwwroot:/www/wwwroot:ro
       - /etc/localtime:/etc/localtime:ro
     deploy:

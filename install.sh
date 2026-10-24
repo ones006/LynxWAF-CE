@@ -231,6 +231,14 @@ prepare_environment() {
     mkdir -p "$INSTALL_DIR/data/nginx/logs"
     mkdir -p "$INSTALL_DIR/data/nginx/conf"
     mkdir -p "$INSTALL_DIR/data/nginx/conf.d"
+    # Writable WAF tree: created as root by Docker otherwise, which blocks the
+    # UID 1000 daemon and the data-plane hit journal.
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/waf/data"
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/waf/rule"
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/waf/config"
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/vhost"
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/user"
+    mkdir -p "$INSTALL_DIR/data/nginx/conf.d/cert"
     mkdir -p "$INSTALL_DIR/data/wwwroot"
     mkdir -p "$INSTALL_DIR/logs"
 
@@ -426,6 +434,31 @@ EOF
     fi
 }
 
+verify_install() {
+    log_info "Verifying deployment integrity..."
+
+    # 1. Console bundle integrity. The SOC console is embedded in the daemon binary
+    #    (//go:embed static); if the image ships an index.html whose hashed main
+    #    bundle is absent, the browser loads a blank shell.
+    if docker exec lynxwaf-daemon sh -c 'a=$(grep -o "/static/assets/[A-Za-z0-9._-]*\.js" /app/static/index.html | head -n1); [ -n "$a" ] && [ -f "/app$a" ]' >/dev/null 2>&1; then
+        log_success "Console bundle intact (embedded assets resolvable)."
+    else
+        log_warn "Console bundle check failed: /app/static/index.html or its main asset is missing in the daemon image."
+    fi
+
+    # 2. Data-plane write access to the rule-hit journal. Nginx workers run as
+    #    uid 1000 (see 'user lynxwaf lynxwaf;') while the bind-mounted host
+    #    directory may be root-owned. Without write access the Lua engine drops
+    #    every rule hit and the interception log stays empty with no error shown.
+    if docker exec -u 1000:1000 lynxwaf-openresty sh -c 'p=/etc/nginx/waf/data/.lynxwaf_write_probe; : > "$p" && rm -f "$p"' >/dev/null 2>&1; then
+        log_success "Rule-hit journal writable by the WAF engine (/etc/nginx/waf/data)."
+    else
+        log_warn "Rule-hit journal is NOT writable by uid 1000 - interception logs will stay empty."
+        log_warn "Remediate with: chown -R 1000:1000 ${INSTALL_DIR}/data/nginx/conf.d/waf/data"
+        log_warn "Then run: cd ${INSTALL_DIR} && ${DOCKER_COMPOSE_CMD} restart lynxwaf-openresty"
+    fi
+}
+
 initialize_admin_user() {
     cd "$INSTALL_DIR"
     local admin_pwd=""
@@ -525,6 +558,7 @@ main() {
     prepare_environment
     start_stack
     initialize_admin_user
+    verify_install
     display_completion_banner
     send_install_telemetry
 }
