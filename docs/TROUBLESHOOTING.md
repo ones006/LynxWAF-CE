@@ -147,6 +147,8 @@ services:
   lynxwaf-daemon:
     network_mode: "host"
     user: "0:0"
+    volumes:
+      - ./ssl:/app/ssl:rw
     # Only what an XDP attach needs: CAP_BPF to load the program, CAP_NET_ADMIN to
     # hook it onto the NIC. NET_RAW, DAC_OVERRIDE, SETUID, SETGID and NET_BIND_SERVICE
     # are absent on purpose — the process is already uid 0, so they would only widen
