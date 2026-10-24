@@ -109,7 +109,9 @@ sync_repo_script() {
         cp -p "$INSTALL_DIR/$name" "$INSTALL_DIR/$name.bak" 2>/dev/null || true
     fi
     mv "$tmp" "$INSTALL_DIR/$name"
-    chmod +x "$INSTALL_DIR/$name" 2>/dev/null || true
+    case "$name" in
+        *.sh) chmod +x "$INSTALL_DIR/$name" 2>/dev/null || true ;;
+    esac
     log_success "Installed/refreshed ${name}"
 }
 
@@ -285,6 +287,18 @@ prepare_environment() {
     if [ ! -f "$INSTALL_DIR/docker-compose.yml" ]; then
         log_info "Downloading official docker-compose.yml from GitHub..."
         curl -fsSL "${GITHUB_RAW}/docker-compose.yml" -o "$INSTALL_DIR/docker-compose.yml"
+    fi
+
+    # Opt-in overlay for the kernel-level eBPF/XDP L4 datapath. Not used by the
+    # default "docker compose up"; kept here so the console's L4 page is not a
+    # dead end. See the file header for what enabling it implies.
+    if [ ! -f "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
+        log_info "Downloading optional eBPF/XDP overlay (docker-compose.ebpf.yml)..."
+        curl -fsSL "${GITHUB_RAW}/docker-compose.ebpf.yml" -o "$INSTALL_DIR/docker-compose.ebpf.yml" 2>/dev/null || true
+        if [ ! -s "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
+            rm -f "$INSTALL_DIR/docker-compose.ebpf.yml" 2>/dev/null || true
+            log_warn "Could not download docker-compose.ebpf.yml; the L4 datapath stays unavailable until it is present."
+        fi
     fi
 
     # Verification / maintenance helpers: always brought in line with the repo

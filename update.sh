@@ -166,27 +166,61 @@ else
     log_warn "Could not fetch update.sh from GitHub; continuing with the local copy."
 fi
 
-COMPOSE_TMP="${SCRIPT_DIR}/docker-compose.yml.upstream"
-if fetch_checked "${GITHUB_RAW}/docker-compose.yml" "$COMPOSE_TMP" "lynxwaf-daemon"; then
-    if cmp -s "$COMPOSE_TMP" "$SCRIPT_DIR/docker-compose.yml"; then
-        rm -f "$COMPOSE_TMP"
-        log_success "docker-compose.yml matches upstream"
-    elif [ "$KEEP_COMPOSE" = true ] || [ "${LYNXWAF_KEEP_COMPOSE:-}" = "true" ]; then
-        rm -f "$COMPOSE_TMP"
-        log_warn "--keep-compose: local docker-compose.yml left untouched. If the new image needs a mount or variable that this file lacks, the stack will misbehave until you sync it."
-    elif [ "$DRY_RUN" = true ]; then
-        rm -f "$COMPOSE_TMP"
-        log_info "docker-compose.yml differs from upstream (dry-run: not replaced)."
-    else
-        cp -p "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/docker-compose.yml.bak.$(date +%Y%m%d%H%M%S)"
-        mv "$COMPOSE_TMP" "$SCRIPT_DIR/docker-compose.yml"
-        COMPOSE_CHANGED=true
-        log_success "docker-compose.yml updated to upstream (previous copy kept as docker-compose.yml.bak.<timestamp>)"
+# Keep the stack files in step with upstream. The optional eBPF overlay is
+# included so an install that predates it can enable the L4 datapath without
+# hunting for the file.
+sync_stack_file() {
+    local name="$1"
+    local tmp="${SCRIPT_DIR}/${name}.upstream"
+    local local_path="${SCRIPT_DIR}/${name}"
+    local was_present=false
+
+    if ! fetch_checked "${GITHUB_RAW}/${name}" "$tmp" "lynxwaf-daemon"; then
+        rm -f "$tmp"
+        log_warn "Could not fetch ${name} from GitHub; continuing with the local copy."
+        return
     fi
-else
-    rm -f "$COMPOSE_TMP"
-    log_warn "Could not fetch docker-compose.yml from GitHub; continuing with the local copy."
-fi
+
+    if [ -f "$local_path" ] && cmp -s "$tmp" "$local_path"; then
+        rm -f "$tmp"
+        log_success "${name} matches upstream"
+        return
+    fi
+
+    if [ "$KEEP_COMPOSE" = true ] || [ "${LYNXWAF_KEEP_COMPOSE:-}" = "true" ]; then
+        rm -f "$tmp"
+        log_warn "--keep-compose: local ${name} left untouched. If the new image needs a mount or variable that this file lacks, the stack will misbehave until you sync it."
+        return
+    fi
+
+    if [ "$DRY_RUN" = true ]; then
+        rm -f "$tmp"
+        log_info "${name} differs from upstream (dry-run: not replaced)."
+        return
+    fi
+
+    if [ -f "$local_path" ]; then
+        was_present=true
+        cp -p "$local_path" "${local_path}.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+    mv "$tmp" "$local_path"
+
+    if [ "$was_present" = true ]; then
+        log_success "${name} updated to upstream (previous copy kept as ${name}.bak.<timestamp>)"
+    else
+        log_success "${name} installed from upstream (it is opt-in; the stack only uses it when passed with -f or COMPOSE_FILE)"
+    fi
+
+    # Only a change to a file the running stack actually consumes needs a recreate.
+    if [ "$name" = "docker-compose.yml" ]; then
+        COMPOSE_CHANGED=true
+    elif [ -n "${COMPOSE_FILE:-}" ] && printf '%s' "$COMPOSE_FILE" | grep -q "$name"; then
+        COMPOSE_CHANGED=true
+    fi
+}
+
+sync_stack_file "docker-compose.yml"
+sync_stack_file "docker-compose.ebpf.yml"
 
 # ------------------------------------------------------------------------------
 # 3. Snapshot the images that are running now

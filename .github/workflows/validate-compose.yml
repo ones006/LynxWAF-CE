@@ -19,7 +19,12 @@ jobs:
         run: cp .env.example .env
 
       - name: Validate Docker Compose Syntax
-        run: docker compose config --quiet
+        run: |
+          docker compose config --quiet
+          # The opt-in eBPF overlay must merge cleanly with the base stack,
+          # otherwise enabling L4 on a server fails in front of the operator.
+          docker compose -f docker-compose.yml -f docker-compose.ebpf.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.ebpf.yml config | grep -q 'network_mode: host'
 
       - name: Validate Shell Scripts Syntax
         run: |

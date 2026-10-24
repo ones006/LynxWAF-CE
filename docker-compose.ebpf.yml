@@ -1,0 +1,71 @@
+# ==============================================================================
+# OPT-IN overlay: Kernel-Level eBPF / XDP L4 Mitigation
+#
+# The default stack (docker-compose.yml) keeps the control-plane daemon bridged,
+# non-root and with every capability dropped. That is the correct default for a
+# management console, but it makes an XDP hook impossible: attaching a BPF
+# program to a NIC requires CAP_BPF + CAP_NET_ADMIN inside the *host* network
+# namespace, and Docker only hands capabilities to a root process.
+#
+# Without this overlay the console reports the datapath as UNAVAILABLE and saves
+# your L4 settings as policy only — nothing is pretended and nothing is dropped
+# in the kernel.
+#
+# Enable the L4 datapath:
+#
+#   cd /opt/lynxwaf
+#   docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
+#
+# Keep using it for every later update by exporting:
+#
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.ebpf.yml
+#
+# Consequences to accept before enabling:
+#   * The daemon joins the host network namespace. The base "ports:" mapping is
+#     ignored, so the console listens directly on 8379 — even if .env sets a
+#     different LYNXWAF_PORT.
+#   * Service DNS names stop resolving inside the daemon, so MySQL and Redis are
+#     reached through the loopback ports the base file already publishes
+#     (127.0.0.1:33060 and 127.0.0.1:6379).
+#   * The process runs as uid 0. Files it writes under ./config, ./logs and
+#     ./data become root-owned; chown them back to 1000:1000 if you later drop
+#     the overlay again.
+#   * XDP runs before netfilter on the chosen NIC, so the port allow-list in the
+#     console decides what still reaches the host. Keep SSH and the console port
+#     in "Allowed TCP destination ports" or you can lock yourself out.
+#   * Requires a Linux kernel with BTF/XDP support. On managed kernels or
+#     providers without it, the console keeps reporting DETACHED/UNAVAILABLE —
+#     the overlay removes the capability blocker, not the kernel one.
+# ==============================================================================
+
+services:
+  lynxwaf-daemon:
+    network_mode: "host"
+    user: "0:0"
+    # NET_RAW is not needed by the loader but keeps tcpdump-style diagnostics
+    # available inside the container; BPF + NET_ADMIN are mandatory.
+    cap_drop:
+      - ALL
+    cap_add:
+      - BPF
+      - NET_ADMIN
+      - NET_RAW
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    # Kernels before 5.11 account BPF memory against RLIMIT_MEMLOCK.
+    ulimits:
+      memlock: -1
+    environment:
+      # Quoted as strings: the base file declares these as KEY=value strings, and
+      # podman-compose refuses to merge an int over a string.
+      DB_HOST: 127.0.0.1
+      DB_PORT: "33060"
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "33060"
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      WAF_ENGINE_URL: http://127.0.0.1
+      # Absolute path inside the image; the loader validates it before use.
+      LYNXWAF_XDP_OBJECT: /app/ebpf/xdp_filter.o

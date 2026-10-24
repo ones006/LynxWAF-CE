@@ -37,7 +37,7 @@ temp/
 backups/
 *.bak
 *.bak.*
-docker-compose.yml.upstream
+*.upstream
 
 # OS and Editor metadata
 .DS_Store

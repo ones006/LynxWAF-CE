@@ -107,6 +107,53 @@ Log in immediately at `https://<YOUR_IP>:8379` with username `admin` and your ne
 
 ---
 
+### F. "XDP datapath is not attached (the process lacks CAP_NET_ADMIN…)"
+
+**Symptom:** on *Network Defense (L4)* the tiles read `—` / "Not measured — no datapath
+attached", and saving a policy shows `configuration rejected: XDP datapath is not
+attached … the rule was saved as policy only`.
+
+**Why this is not a bug:** the default stack runs the control-plane daemon bridged,
+as a non-root user, with every Linux capability dropped. Attaching an XDP program to a
+network card needs `CAP_BPF` + `CAP_NET_ADMIN` in the host network namespace, so the
+daemon cannot do it — and it says so instead of pretending the kernel is filtering.
+Your L4 settings are stored and will take effect the moment a datapath is attached.
+
+**To make the L4 datapath real**, start the daemon with the opt-in overlay shipped in
+this repository (`docker-compose.ebpf.yml`). `update.sh` downloads it automatically;
+otherwise fetch it once:
+
+```bash
+cd /opt/lynxwaf
+[ -f docker-compose.ebpf.yml ] || sudo curl -fsSL \
+  https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/docker-compose.ebpf.yml \
+  -o docker-compose.ebpf.yml
+
+sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
+```
+
+Then reload *Network Defense (L4)*: the interface list now shows the host NICs, and
+after enabling mitigation the status becomes `ATTACHED` with live counters.
+
+Read the header of `docker-compose.ebpf.yml` before enabling it. In short: the daemon
+joins the host network namespace (the console listens on port 8379 directly and the
+base `ports:` mapping is ignored), MySQL/Redis are reached through their published
+loopback ports, the process runs as root so files under `config/`, `logs/` and `data/`
+become root-owned, and XDP drops happen before netfilter — keep SSH and the console
+port in the allowed TCP list or you can lock yourself out.
+
+**Still unavailable with the overlay?** The kernel or virtual NIC is the limit, not
+the container:
+
+```bash
+# Kernel without BTF/XDP support (common on managed/shared hosts)
+uname -r; ls /sys/kernel/btf/vmlinux 2>/dev/null || echo "no BTF"
+# Driver without native XDP: switch the console to "XDP Generic"
+sudo ip link set dev eth0 xdp off   # clears a program that blocks the attach
+```
+
+---
+
 ## 3. Full Clean Restart
 
 To safely reboot the entire LynxWAF stack:

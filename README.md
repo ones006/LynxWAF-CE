@@ -218,6 +218,26 @@ sudo bash update.sh --dry-run
 
 ---
 
+## 🚀 Kernel-Level L4 Defense (eBPF / XDP) — Opt-In
+
+The default stack runs the management daemon unprivileged with every capability
+dropped, which is the safe default but cannot attach an XDP program to a NIC. In that
+mode the *Network Defense (L4)* console reports the datapath as unavailable and stores
+your settings as policy only — it never reports drops it did not make.
+
+To run the kernel datapath for real, start the daemon with the shipped overlay:
+
+```bash
+cd /opt/lynxwaf
+sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
+```
+
+The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` and host networking; its header
+lists the trade-offs (console on port 8379 directly, root-owned files, XDP filtering
+before netfilter). Details: [Troubleshooting F](docs/TROUBLESHOOTING.md).
+
+---
+
 ## 🗑️ Uninstalling LynxWAF Community Edition
 
 To completely remove LynxWAF, stop all services, and wipe all local databases and configurations:
