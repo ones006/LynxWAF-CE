@@ -212,15 +212,18 @@ Sites are served, requests are logged in `access.log`, and yet the console's QPS
 total-request panels stay flat. Nothing is broken in the data path: the counters live in
 the engine and the console has to be able to read them.
 
-In this stack the console runs in its own network namespace, while the coordination
-listener is bound to `127.0.0.251:80` **inside the engine's namespace**. That address is
-not reachable from the daemon container, so the counters are mirrored instead: an engine
-worker writes `data/nginx/conf.d/waf/data/lynxwaf_global_status.json` every few seconds
+In this stack the engine runs with `network_mode: host`, so the coordination listener on
+`127.0.0.251:80` is bound to the **host's** loopback — while the console container sits on
+the Compose bridge and owns a different loopback. That address is not reachable from the
+daemon container, so the counters are mirrored instead: an engine worker writes
+`data/nginx/conf.d/waf/data/lynxwaf_global_status.json` every few seconds
 over the journal volume, and the console reads that file when the HTTP read fails.
 Configuration changes travel the same way in reverse: the daemon writes
-`lynxwaf_reload.json` into that directory and the engine's supervisor applies it — the
-daemon container has no docker CLI, no nginx binary, and no permission to signal a master
-owned by another container's root.
+`lynxwaf_reload.json` into that directory and the engine's supervisor process applies it —
+the daemon container has no docker CLI, no nginx binary, and no permission to signal a
+root-owned master. If you followed §F to put the daemon on the host network as well, the
+HTTP read works directly and the mirror is only a second source — that overlay is the
+reason `WAF_ENGINE_URL: http://127.0.0.251` belongs with it.
 
 ```bash
 # 1. Is the engine exporting? A fresh timestamp means the worker timer is armed.
