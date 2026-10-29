@@ -499,6 +499,55 @@ verify_install() {
         log_warn "Remediate with: chown -R 1000:1000 ${INSTALL_DIR}/data/nginx/conf.d/waf/data"
         log_warn "Then run: cd ${INSTALL_DIR} && ${DOCKER_COMPOSE_CMD} restart lynxwaf-openresty"
     fi
+
+    # 3. The reload channel. The daemon image ships no docker CLI and no nginx binary, so
+    #    it cannot reload the data plane the way a host install does; it drops a marker in
+    #    the shared journal and the engine's own supervisor - running as the master's uid -
+    #    applies it. The daemon container runs as uid 1000 with every capability dropped,
+    #    so the same host directory must be writable by that uid from this side too.
+    if docker exec -u 1000:1000 lynxwaf-daemon sh -c 'p=/app/data/nginx/conf.d/waf/data/.lynxwaf_reload_probe; : > "$p" && rm -f "$p"' >/dev/null 2>&1; then
+        log_success "Reload channel writable by the control plane (/app/data/nginx/conf.d/waf/data)."
+    else
+        log_warn "The control plane cannot write into the engine journal - config changes will be saved but never applied."
+        log_warn "Remediate with: chown -R 1000:1000 ${INSTALL_DIR}/data"
+    fi
+
+    # 4. One host-side reload. The engine container comes up while the daemon is still
+    #    generating its configuration, so a first start can be serving the previous
+    #    waf.conf - and the counter exporter lives in the new one. nginx -t first: a
+    #    reload is refused on bad config, and pushing a broken one would take the edge
+    #    down instead of fixing logging.
+    if $DOCKER_COMPOSE_CMD exec -T lynxwaf-openresty nginx -t >/dev/null 2>&1 \
+        && $DOCKER_COMPOSE_CMD exec -T lynxwaf-openresty nginx -s reload >/dev/null 2>&1; then
+        log_success "Data plane reloaded with the generated engine configuration."
+    else
+        log_warn "Could not reload the data plane from the host."
+        log_warn "Check it yourself: ${DOCKER_COMPOSE_CMD} exec lynxwaf-openresty nginx -t"
+    fi
+
+    # 5. Traffic accounting end to end. The engine worker writes the counter mirror
+    #    every few seconds and the console reads it, or the coordination listener when
+    #    both processes share a network namespace. No mirror means requests are served
+    #    but never counted, which is the one symptom an operator cannot tell apart from
+    #    "there is no traffic".
+    mirror="${INSTALL_DIR}/data/nginx/conf.d/waf/data/lynxwaf_global_status.json"
+    waited=0
+    while [ ! -f "$mirror" ] && [ "$waited" -lt 30 ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ -f "$mirror" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$mirror" 2>/dev/null || echo 0) ))
+        if [ "$age" -le 120 ] && docker exec lynxwaf-daemon test -r /app/data/nginx/conf.d/waf/data/lynxwaf_global_status.json >/dev/null 2>&1; then
+            log_success "Traffic counters are flowing to the console (mirror ${age}s old)."
+        else
+            log_warn "Counter mirror exists but is stale (${age}s) or unreadable by the daemon - the traffic chart will lag."
+        fi
+    else
+        log_warn "No traffic counter mirror after ${waited}s: requests are proxied but never recorded."
+        log_warn "Look at ${DOCKER_COMPOSE_CMD} logs lynxwaf-openresty for an init_worker_by_lua error, then reload:"
+        log_warn "  ${DOCKER_COMPOSE_CMD} exec lynxwaf-openresty nginx -s reload"
+    fi
 }
 
 initialize_admin_user() {

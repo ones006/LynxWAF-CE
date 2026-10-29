@@ -171,7 +171,11 @@ services:
       MYSQL_PORT: "33060"
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: "6379"
-      WAF_ENGINE_URL: http://127.0.0.1
+      # The coordination listener, not the engine's public port. The base file
+      # defaults this to http://host.docker.internal, which does not resolve once the
+      # daemon shares the host namespace, and 127.0.0.1 reaches only the protected
+      # sites — the console-to-engine endpoints live on 127.0.0.251.
+      WAF_ENGINE_URL: http://127.0.0.251
       # Absolute path inside the image; the loader validates it before use.
       LYNXWAF_XDP_OBJECT: /app/ebpf/xdp_filter.o
 ```
@@ -201,6 +205,63 @@ uname -r; ls /sys/kernel/btf/vmlinux 2>/dev/null || echo "no BTF"
 # Driver without native XDP: switch the console to "XDP Generic"
 sudo ip link set dev eth0 xdp off   # clears a program that blocks the attach
 ```
+
+### G. The Traffic Chart Stays Empty on a Live Proxy
+
+Sites are served, requests are logged in `access.log`, and yet the console's QPS and
+total-request panels stay flat. Nothing is broken in the data path: the counters live in
+the engine and the console has to be able to read them.
+
+In this stack the console runs in its own network namespace, while the coordination
+listener is bound to `127.0.0.251:80` **inside the engine's namespace**. That address is
+not reachable from the daemon container, so the counters are mirrored instead: an engine
+worker writes `data/nginx/conf.d/waf/data/lynxwaf_global_status.json` every few seconds
+over the journal volume, and the console reads that file when the HTTP read fails.
+Configuration changes travel the same way in reverse: the daemon writes
+`lynxwaf_reload.json` into that directory and the engine's supervisor applies it — the
+daemon container has no docker CLI, no nginx binary, and no permission to signal a master
+owned by another container's root.
+
+```bash
+# 1. Is the engine exporting? A fresh timestamp means the worker timer is armed.
+ls -l --time-style=full-iso /opt/lynxwaf/data/nginx/conf.d/waf/data/lynxwaf_global_status.json
+
+# 2. Is the exporter loaded at all? It lives in the generated waf.conf.
+grep -c 'init_worker_by_lua' /opt/lynxwaf/data/nginx/conf.d/waf/waf.conf
+
+# 3. Can the console ask for a reload? Same volume, daemon side, must be writable by uid 1000.
+docker exec -u 1000:1000 lynxwaf-daemon sh -c \
+  'p=/app/data/nginx/conf.d/waf/data/.probe; : > "$p" && rm -f "$p" && echo writable'
+```
+
+If step 1 shows the file missing or minutes old while step 2 prints `1`, the engine is
+still running the configuration it loaded at container start — the engine comes up while
+the daemon is still generating that file, so after an update it can be one version behind.
+One reload closes the gap:
+
+```bash
+cd /opt/lynxwaf
+docker compose exec lynxwaf-openresty nginx -t && docker compose exec lynxwaf-openresty nginx -s reload
+```
+
+If step 3 fails, the shared journal is root-owned, and then no configuration change can
+reach the engine either — that one directory carries the reload requests, the counters and
+the interception log. Fix the ownership:
+
+```bash
+chown -R 1000:1000 /opt/lynxwaf/data && docker compose restart lynxwaf-daemon lynxwaf-openresty
+```
+
+A reload can also be refused rather than skipped. The supervisor runs `nginx -t` before
+signalling and keeps serving the current configuration if the generated one does not
+validate, so check the engine's own output before suspecting the channel:
+
+```bash
+docker logs lynxwaf-openresty 2>&1 | grep -i 'refused reload'
+```
+
+A stale first data point is normal: the console stores a per-minute delta, so the initial
+sample is only a baseline. Give it two minutes after the mirror starts moving.
 
 ---
 
