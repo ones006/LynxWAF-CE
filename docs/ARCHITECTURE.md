@@ -98,3 +98,16 @@ LynxWAF Community Edition is **100% self-contained and on-premise**:
 - **Zero Cloud Phone-Home**: LynxWAF does not send logs, domains, or traffic telemetry to any external cloud service.
 - **Data Sovereignty**: All SSL certificates, encryption keys, and request payload logs remain exclusively on your server.
 - **Air-Gapped Ready**: Can operate in fully isolated private networks and dark-site infrastructure.
+
+> [!NOTE]
+> **What a default install does send.** One request runs without being configured: the
+> nightly blocklist refresh, which GETs two public publisher pages (the Tor Project exit
+> list and Spamhaus DROP) and reads address ranges back. The GET is unauthenticated and
+> carries no licence ID, hostname, domain or customer data. Set
+> `LYNXWAF_THREAT_INTEL_SYNC=off` and the schedule skips it — the addresses already
+> stored keep their expiry clock, so the blocklist decays instead of being emptied. Point
+> `LYNXWAF_FEED_URL` at a signed feed manifest from a mirror you run instead, and that
+> fetch becomes the only source. Every other path out is opt-in and off by default:
+> licence activation, licence heartbeat, monthly report email, public IP detection,
+> update checks, update telemetry and the vulnerability feed. Each one is documented in
+> [`.env.example`](../.env.example).

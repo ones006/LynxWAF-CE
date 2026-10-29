@@ -387,6 +387,8 @@ REDIS_PASSWORD=${REDIS_SECRET}
 INITIAL_ADMIN_PASSWORD=${ADMIN_PASS}
 SECURITY_ENTRANCE=${AUTH_PATH}
 LYNXWAF_VERSION=ce-latest
+# Set to on to send one anonymous install ping (host architecture only).
+LYNXWAF_INSTALL_TELEMETRY=
 EOF
         log_success "Configured credentials at: ${INSTALL_DIR}/.env"
     else
@@ -576,8 +578,20 @@ display_completion_banner() {
 }
 
 send_install_telemetry() {
+    # Opt-in only. A default install volunteers nothing, so the counter stays
+    # silent until the operator asks for it with LYNXWAF_INSTALL_TELEMETRY=on
+    # in .env or in the environment. The payload is the host architecture.
+    local telemetry=""
+    if [ -f "$INSTALL_DIR/.env" ]; then
+        telemetry=$(grep "^LYNXWAF_INSTALL_TELEMETRY=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d '=' -f2- | tr -d '[:space:]')
+    fi
+    [ -z "$telemetry" ] && telemetry="${LYNXWAF_INSTALL_TELEMETRY:-}"
+    if [ "$telemetry" != "on" ]; then
+        return 0
+    fi
+
     local host_arch="${ARCH:-$(uname -m)}"
-    # Send anonymous install ping to Telegram relay (resilient to ISP DNS blocks via DoH)
+    # Anonymous install ping to the counter relay (resilient to ISP DNS blocks via DoH)
     curl -s --connect-timeout 4 --max-time 6 --doh-url https://1.1.1.1/dns-query \
         "https://lynxwaf-counter.ones006.workers.dev/installed?arch=${host_arch}" >/dev/null 2>&1 \
         || curl -s --connect-timeout 4 --max-time 6 \

@@ -89,19 +89,65 @@ services:
       - DB_HOST=lynxwaf-mysql
       - DB_PORT=3306
       - DB_USER=root
-      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - "DB_PASSWORD=${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}"
       - DB_NAME=lynxwaf_db
       - MYSQL_HOST=lynxwaf-mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=root
-      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - "MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}"
       - MYSQL_DATABASE=lynxwaf_db
       - MYSQL_DB=lynxwaf_db
       - REDIS_HOST=lynxwaf-redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-lynxwaf_admin_sec_2026}
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"
+      # No fallback value here on purpose. install.sh generates this secret; a
+      # published default would be a credential anybody could log in with.
+      - "INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set in .env}"
       - WAF_ENGINE_URL=${WAF_ENGINE_URL:-http://host.docker.internal}
+      # ----------------------------------------------------------------------------
+      # Outbound traffic. Everything below is unset by default, and unset means the
+      # product default, which is off: a fresh CE container volunteers nothing.
+      # The container's own updates come from the image, not from these switches.
+      # ----------------------------------------------------------------------------
+      - LYNXWAF_LICENSE_ACTIVATION=${LYNXWAF_LICENSE_ACTIVATION:-}
+      - LYNXWAF_LICENSE_HEARTBEAT=${LYNXWAF_LICENSE_HEARTBEAT:-}
+      - LYNXWAF_MONTHLY_REPORT=${LYNXWAF_MONTHLY_REPORT:-}
+      # The address the console, its certificate SANs and the attack map use.
+      # Inside a container the egress interface is the bridge network, so a host
+      # reached through published ports declares its real address here; declaring
+      # it also means no address lookup of any kind.
+      - LYNXWAF_SERVER_IP=${LYNXWAF_SERVER_IP:-}
+      - LYNXWAF_PUBLIC_IP_DETECTION=${LYNXWAF_PUBLIC_IP_DETECTION:-}
+      # Signed vulnerability feed: unset keeps the catalog embedded in the binary.
+      - LYNXWAF_VULN_FEED_URL=${LYNXWAF_VULN_FEED_URL:-}
+      - LYNXWAF_CATALOG_PUBKEY=${LYNXWAF_CATALOG_PUBKEY:-}
+      - LYNXWAF_CATALOG_PUBKEYS=${LYNXWAF_CATALOG_PUBKEYS:-}
+      # Signed contents feeds: unset keeps the snapshot and blocklists on disk.
+      - LYNXWAF_FEED_URL=${LYNXWAF_FEED_URL:-}
+      - LYNXWAF_FEED_PUBKEY=${LYNXWAF_FEED_PUBKEY:-}
+      - LYNXWAF_FEED_PUBKEYS=${LYNXWAF_FEED_PUBKEYS:-}
+      # The exception to the opt-in rule above: the nightly blocklist refresh GETs
+      # two public publisher pages (Tor exit list, Spamhaus DROP) unasked. The GET
+      # carries no hostname or customer data, but it is still a request, so off
+      # here means the schedule skips it and the stored addresses decay on their
+      # own expiry clock rather than being emptied. Ignored when LYNXWAF_FEED_URL
+      # names a signed mirror to fetch from instead.
+      - LYNXWAF_THREAT_INTEL_SYNC=${LYNXWAF_THREAT_INTEL_SYNC:-}
+      # Signed releases: unset means this host never asks anybody about updates.
+      # A container installs nothing over its own image — the console says which
+      # step it can do here, and the staged bundle appears under ./data/update/
+      # staged on the host, where update_lynxwaf.sh --from-bundle can run on it.
+      - LYNXWAF_UPDATE_URL=${LYNXWAF_UPDATE_URL:-}
+      - LYNXWAF_RELEASE_PUBKEY=${LYNXWAF_RELEASE_PUBKEY:-}
+      - LYNXWAF_RELEASE_PUBKEYS=${LYNXWAF_RELEASE_PUBKEYS:-}
+      - LYNXWAF_UPDATE_TELEMETRY=${LYNXWAF_UPDATE_TELEMETRY:-}
+      # /metrics answers a loopback scraper without a token; set one to scrape it
+      # from outside the container.
+      - LYNXWAF_METRICS_TOKEN=${LYNXWAF_METRICS_TOKEN:-}
+      # Report signing: empty means the container generates ./config/
+      # report_signing.key on the first issued PDF and the key never leaves.
+      - LYNXWAF_REPORT_SIGNING_KEY=${LYNXWAF_REPORT_SIGNING_KEY:-}
+      - LYNXWAF_REPORT_SIGNING_KEY_FILE=${LYNXWAF_REPORT_SIGNING_KEY_FILE:-}
     depends_on:
       lynxwaf-mysql:
         condition: service_healthy
@@ -132,7 +178,7 @@ services:
       - CHOWN
       - DAC_OVERRIDE
     environment:
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}"
       MYSQL_DATABASE: lynxwaf_db
     volumes:
       - ./data/mysql/data:/var/lib/mysql:rw
@@ -147,7 +193,7 @@ services:
       --max_connections=300
       --table_open_cache=1000
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:?Error: MYSQL_ROOT_PASSWORD must be set in .env}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -181,9 +227,9 @@ services:
       --appendonly no
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
-      --requirepass "${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be set in .env}"
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be set in .env}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
