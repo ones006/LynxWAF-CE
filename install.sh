@@ -412,7 +412,12 @@ start_stack() {
     # Initialize default configurations from container image if missing on host
     if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
         log_info "Extracting default configurations from daemon container image..."
-        docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null || true' 2>/dev/null || true
+        # serverip.json is dropped on the way out. It records the address of the host
+        # the image was built from, and an operator's machine has to learn its own
+        # address instead — a seeded value would surface in the console, the self-
+        # signed certificate SANs and the attack map. Cached ce-latest images may
+        # predate the build-side fix, so the removal happens here as well.
+        docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null; rm -f /mnt_config/serverip.json' 2>/dev/null || true
     fi
 
     # Ensure MySQL configuration points to internal container network with secure credentials

@@ -259,8 +259,8 @@ variant of the file: [Troubleshooting F](docs/TROUBLESHOOTING.md).
 
 Start with **Generic**; switch to **Native** if your NIC supports it (check:
 `ethtool -i <iface> | grep driver`). Hardware Offload is for 100G+ deployments.
-Full NIC compatibility table and verifier details:
-[docs/EBPF_XDP_DATAPATH.md §6](https://g.thinkm.id/TangaraMitrakom/LynxWAF/src/main/docs/EBPF_XDP_DATAPATH.md) (main repo).
+Verifier errors, attach failures and how to clear a program that blocks the attach:
+[`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md) section F.
 
 ---
 
