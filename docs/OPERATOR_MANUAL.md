@@ -59,8 +59,12 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/
 git clone https://github.com/ones006/LynxWAF-CE.git /opt/lynxwaf
 cd /opt/lynxwaf
 
-# 2. Salin template environment dan sesuaikan
-cp .env.example .env
+# 2. Buat .env dari template dan isi tiga secret yang sengaja dibiarkan kosong.
+#    compose menolak start selama salah satunya masih kosong.
+sed -e "s#^MYSQL_ROOT_PASSWORD=.*#MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)#" \
+    -e "s#^REDIS_PASSWORD=.*#REDIS_PASSWORD=$(openssl rand -base64 32)#" \
+    -e "s#^INITIAL_ADMIN_PASSWORD=.*#INITIAL_ADMIN_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-16)#" \
+    .env.example > .env
 chmod 600 .env
 
 # 3. Jalankan container stack

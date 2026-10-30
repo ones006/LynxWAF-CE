@@ -20,6 +20,23 @@ jobs:
 
       - name: Validate Docker Compose Syntax
         run: |
+          # The sample ships MYSQL_ROOT_PASSWORD, REDIS_PASSWORD and
+          # INITIAL_ADMIN_PASSWORD empty, and compose refuses an empty required
+          # variable, so a bare copy of the template must NOT validate. Assert that
+          # before anything else: it is the only thing standing between this
+          # repository and a re-added published default, which was the real failure
+          # mode until the guards went in.
+          if docker compose config --quiet 2>/dev/null; then
+            echo "the empty sample environment validated - a secret default is back" >&2
+            exit 1
+          fi
+          # Throwaway values for the remainder of this job and nothing else. A real
+          # host gets its own from install.sh, written into .env with mode 0600.
+          sed -i \
+            -e 's|^MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=ci-only-mysql-secret|' \
+            -e 's|^REDIS_PASSWORD=.*|REDIS_PASSWORD=ci-only-redis-secret|' \
+            -e 's|^INITIAL_ADMIN_PASSWORD=.*|INITIAL_ADMIN_PASSWORD=ci-only-admin-secret|' \
+            .env
           docker compose config --quiet
           # The eBPF/XDP overlay is no longer a file in this repository - it grants
           # uid 0, CAP_BPF/CAP_NET_ADMIN/CAP_SYS_ADMIN and the host network

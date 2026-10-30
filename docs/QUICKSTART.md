@@ -66,8 +66,15 @@ If you prefer full control over repository files:
 git clone https://github.com/ones006/LynxWAF-CE.git /opt/lynxwaf
 cd /opt/lynxwaf
 
-# 2. Copy and configure environment variables
-cp .env.example .env
+# 2. Build .env from the sample and fill in the three secrets it ships empty.
+#    They have no defaults on purpose: compose refuses to start while any of them
+#    is empty. Redirecting into a new .env rather than using sed -i keeps this
+#    working on GNU and BSD sed alike.
+sed -e "s#^MYSQL_ROOT_PASSWORD=.*#MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32)#" \
+    -e "s#^REDIS_PASSWORD=.*#REDIS_PASSWORD=$(openssl rand -base64 32)#" \
+    -e "s#^INITIAL_ADMIN_PASSWORD=.*#INITIAL_ADMIN_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-16)#" \
+    .env.example > .env
+chmod 600 .env
 
 # 3. Create persistent directories
 mkdir -p config data/mysql/data data/mysql/log data/nginx/logs data/nginx/conf data/nginx/conf.d data/wwwroot logs
