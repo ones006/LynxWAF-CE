@@ -325,7 +325,16 @@ if [ "$DO_BACKUP" = true ]; then
         tars+=(data/nginx)
     fi
     if [ ${#tars[@]} -gt 0 ]; then
-        tar -czf "$bundle" "${tars[@]}" 2>/dev/null || log_warn "Backup tar reported a problem (continuing)."
+        TAR_ERR="$(mktemp)"
+        if ! tar -czf "$bundle" "${tars[@]}" 2>"$TAR_ERR"; then
+            # Name the complaint. tar exit 1 against a live nginx journal is normal and
+            # only means the archive is not a point-in-time copy; a permission error means
+            # whole trees are missing from the one file you would restore from. Throwing
+            # the reason away left the operator unable to tell those two apart.
+            command sed -n '1,3p' "$TAR_ERR" >&2
+            log_warn "Backup tar reported a problem (continuing)."
+        fi
+        rm -f "$TAR_ERR"
         if [ -s "$bundle" ]; then
             chmod 600 "$bundle"
             log_success "State backup: ${bundle} ($(du -sh "$bundle" 2>/dev/null | awk '{print $1}'))"
@@ -362,11 +371,21 @@ log_step "[5/7] Pulling updated container images from GHCR"
 # supervisor in an older engine image to read them. GHCR handshake timeouts are common
 # enough that retrying is the difference between an update and a silently broken stack.
 PULL_ERR="$(mktemp)"
+PULL_ERR_NEW="$(mktemp)"
 pulled=false
+reason_shown=false
 for attempt in 1 2 3 4; do
-    if "${COMPOSE_CMD[@]}" pull 2>"$PULL_ERR"; then
+    if "${COMPOSE_CMD[@]}" pull 2>"$PULL_ERR_NEW"; then
         pulled=true
         break
+    fi
+    # Show the reason on the first failure and whenever it changes. Two minutes of blind
+    # retries at 15, 30 and 45s asks an operator to guess whether this is a handshake
+    # timeout, a rate limit or a revoked credential, and those want different fixes.
+    if [ "$reason_shown" != true ] || ! cmp -s "$PULL_ERR" "$PULL_ERR_NEW"; then
+        command tail -n 3 "$PULL_ERR_NEW" >&2 || true
+        cp "$PULL_ERR_NEW" "$PULL_ERR"
+        reason_shown=true
     fi
     if [ "$attempt" -lt 4 ]; then
         log_warn "Pull attempt $attempt failed; retrying in $((attempt * 15))s."
@@ -374,13 +393,21 @@ for attempt in 1 2 3 4; do
     fi
 done
 if [ "$pulled" != true ]; then
-    command tail -n 3 "$PULL_ERR" >&2 || true
-    rm -f "$PULL_ERR"
     log_warn "Images could not be fetched. Containers were left exactly as they are."
     log_warn "Pre-update image record: ${SNAPSHOT_FILE}"
+    # A host that pings the registry and still cannot complete a TLS handshake has a
+    # path problem, not a registry problem: the daemon's proxy settings or a link that
+    # cannot carry a full ClientHello. Say so, because "retry later" sends operators
+    # after a fault that will never heal on its own.
+    if command grep -qi 'TLS handshake timeout\|i/o timeout\|no such host\|connection refused' "$PULL_ERR"; then
+        log_warn "The failure is at the network layer, not the registry. Check the daemon's own"
+        log_warn "proxy environment (systemctl show docker -p Environment; cat /etc/docker/daemon.json)"
+        log_warn "and whether this link carries a full TLS packet (ping -M do -s 1452 \$(getent ahostsv4 ghcr.io | awk '{print \$1; exit}'))."
+    fi
+    rm -f "$PULL_ERR" "$PULL_ERR_NEW"
     die "Retry once the registry is reachable: ${COMPOSE_CMD[*]} pull"
 fi
-rm -f "$PULL_ERR"
+rm -f "$PULL_ERR" "$PULL_ERR_NEW"
 
 # ------------------------------------------------------------------------------
 # 6. Recreate
