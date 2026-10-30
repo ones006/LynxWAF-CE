@@ -235,7 +235,24 @@ grep -c 'init_worker_by_lua' /opt/lynxwaf/data/nginx/conf.d/waf/waf.conf
 # 3. Can the console ask for a reload? Same volume, daemon side, must be writable by uid 1000.
 docker exec -u 1000:1000 lynxwaf-daemon sh -c \
   'p=/app/data/nginx/conf.d/waf/data/.probe; : > "$p" && rm -f "$p" && echo writable'
+
+# 4. Does the engine have anything to read that reload with? Older engine images do not.
+docker exec lynxwaf-openresty sh -c \
+  'test -x /opt/lynxwaf/bin/lynxwaf-engine.sh && echo supervisor present || echo NO SUPERVISOR - engine is too old to reload'
+
+# 5. Can the engine write its own journal? /etc/nginx is read-only by design and only this
+#    directory inside it is writable; a container created before that mount landed cannot
+#    export anything.
+docker exec lynxwaf-openresty sh -c \
+  'p=/etc/nginx/waf/data/.probe; : > "$p" && rm -f "$p" && echo writable || echo JOURNAL READ-ONLY'
 ```
+
+Step 4 and 5 failing together, or either one alone, is the half-updated stack: the console
+moved to the new image and the data plane did not, which is exactly what an interrupted
+`update.sh` leaves behind. `docker compose ps` still reports four healthy containers, so
+nothing announces the problem. `docker compose pull lynxwaf-openresty` then
+`docker compose up -d lynxwaf-openresty` fixes it; the container recreates because its
+image id changed, and the new one carries the supervisor and the read-write journal mount.
 
 If step 1 shows the file missing or minutes old while step 2 prints `1`, the engine is
 still running the configuration it loaded at container start — the engine comes up while
@@ -253,6 +270,15 @@ the interception log. Fix the ownership:
 
 ```bash
 chown -R 1000:1000 /opt/lynxwaf/data && docker compose restart lynxwaf-daemon lynxwaf-openresty
+```
+
+An unwritable journal on the **engine** side is the same ownership problem seen from the
+other container, and it used to be invisible: the exporter tried, failed, remembered the
+failure and said nothing for the life of the worker. It now logs once per worker, so the
+engine answers the question directly:
+
+```bash
+tail -n 20 /opt/lynxwaf/data/nginx/logs/error.log | grep 'counter mirror'
 ```
 
 A reload can also be refused rather than skipped. The supervisor runs `nginx -t` before

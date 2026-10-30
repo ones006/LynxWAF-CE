@@ -407,7 +407,41 @@ start_stack() {
     log_info "Pulling official container images from GitHub Container Registry (GHCR)..."
     cd "$INSTALL_DIR"
 
-    $DOCKER_COMPOSE_CMD pull || log_warn "Pull completed or using local cached images."
+    # Retry before concluding anything: a single dropped TLS handshake against GHCR used
+    # to leave the install asserting it was "using local cached images" whether or not any
+    # existed. The outcome is now classified, because "unreachable but cached" and
+    # "unreachable and empty" are different installs.
+    PULL_ERR="$(mktemp)"
+    pulled=false
+    for attempt in 1 2 3 4; do
+        if $DOCKER_COMPOSE_CMD pull 2>"$PULL_ERR"; then
+            pulled=true
+            break
+        fi
+        if [ "$attempt" -lt 4 ]; then
+            log_warn "Pull attempt $attempt failed; retrying in $((attempt * 15))s."
+            sleep $((attempt * 15))
+        fi
+    done
+    if [ "$pulled" != true ]; then
+        tail -n 3 "$PULL_ERR" >&2 || true
+        rm -f "$PULL_ERR"
+        daemon_img="$(grep -oE '^LYNXWAF_DAEMON_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
+        engine_img="$(grep -oE '^LYNXWAF_OPENRESTY_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
+        daemon_img="${daemon_img:-ghcr.io/ones006/lynxwaf-daemon:ce-latest}"
+        engine_img="${engine_img:-ghcr.io/ones006/lynxwaf-openresty:ce-latest}"
+        if docker image inspect "$daemon_img" >/dev/null 2>&1 \
+            && docker image inspect "$engine_img" >/dev/null 2>&1; then
+            log_warn "GHCR was unreachable, but both LynxWAF images are already on this host: continuing on them."
+            log_warn "They may predate the published tags. Re-run 'docker compose pull' once the registry is reachable."
+        else
+            log_error "Could not fetch the LynxWAF images and no usable copy is cached locally. Aborting."
+            log_error "Check reachability from this host: curl -sSI https://ghcr.io/v2/ | head -1"
+            exit 1
+        fi
+    else
+        rm -f "$PULL_ERR"
+    fi
 
     # Initialize default configurations from container image if missing on host
     if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
