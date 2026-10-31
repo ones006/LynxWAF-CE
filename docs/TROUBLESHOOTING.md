@@ -202,8 +202,12 @@ then replace it deliberately.
 
 **The image has to carry the capabilities.** `cap_add` alone does not reach a non-root
 process, so a daemon image built before the file-capability change keeps reporting
-`UNAVAILABLE` even with this overlay applied. `update.sh` pulls such an image; to check
-what the running daemon actually has:
+`UNAVAILABLE` even with this overlay applied. That stale image prints the overlay text
+it was built with too, including its old `user: "0:0"` line — the file looks correct
+because the binary wrote it, and applying it crash-loops the daemon on the lock.
+`update.sh` pulls a current image, and `ebpf --overlay` prints a warning on stderr while
+the binary itself carries no capabilities; the warning going away is the confirmation.
+To check what the running daemon actually has:
 
 ```bash
 sudo docker compose exec lynxwaf-daemon grep CapEff /proc/1/status

@@ -761,6 +761,14 @@ POSTURE_MAPS
     elif [ -f "${dir}/docker-compose.ebpf.yml" ]; then
         echo "  [info] ${dir}/docker-compose.ebpf.yml exists but is not in use — the L4 datapath"
         echo "         is off until the stack is started with -f docker-compose.ebpf.yml."
+        if command grep -qE '^[[:space:]]*user:[[:space:]]*"?0' "${dir}/docker-compose.ebpf.yml" 2>/dev/null; then
+            echo "  [open] That overlay sets user: \"0:0\", which crash-loops the daemon with"
+            echo "         'open /app/data/.lock: permission denied' — cap_drop: ALL leaves a uid-0"
+            echo "         process without CAP_DAC_OVERRIDE, so it cannot reopen a lock the uid-1000"
+            echo "         instance created. Only a daemon image from before the file-capability"
+            echo "         change prints that text: update.sh pulls a current image, and regenerating"
+            echo "         the overlay from it says so on stderr when the image is new enough."
+        fi
     fi
 
     echo ""
