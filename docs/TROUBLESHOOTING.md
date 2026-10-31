@@ -206,11 +206,18 @@ process, so a daemon image built before the file-capability change keeps reporti
 what the running daemon actually has:
 
 ```bash
-sudo docker compose exec lynxwaf-daemon grep CapEff /proc/self/status
+sudo docker compose exec lynxwaf-daemon grep CapEff /proc/1/status
 ```
 
-`CapEff: 0000000000000000` means no privileges at all — the default stack. After the
-overlay and a current image the mask is non-zero (it contains `CAP_NET_ADMIN`, bit 12).
+Read PID 1, not `/proc/self/status`: `exec` launches `grep`, and the capabilities
+belong to `/app/LynxWaf` only, so an `exec`ed probe prints
+`CapEff: 0000000000000000` even from a correctly privileged daemon. PID 1 is the
+binary itself because the image uses an exec-form `ENTRYPOINT`.
+
+`CapEff: 0000000000000000` on PID 1 means no privileges at all — the default stack,
+or an image that predates the file capabilities. With the overlay applied and a
+current image it reads `0000008000201000`, which is exactly
+`CAP_BPF|CAP_NET_ADMIN|CAP_SYS_ADMIN` and nothing else.
 
 Then reload *Network Defense (L4)*: the interface list now shows the host NICs, and
 after enabling mitigation the status becomes `ATTACHED` with live counters.
