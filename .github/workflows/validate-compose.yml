@@ -94,3 +94,16 @@ jobs:
           chmod +x "$work/bin/docker"
           PATH="$work/bin:$PATH" bash "$work/inst/update.sh" --dry-run
           test -s "$work/inst"/logs/pre-update-*.txt
+          # --offline exists for hosts that cannot reach GHCR. It must plan a load and
+          # never a pull, and it must refuse to run when no archive is present - the
+          # silent alternative is recreating from a stale local image.
+          mkdir -p "$work/inst/offline"
+          echo dummy > "$work/inst/offline/lynxwaf-ci.tar"
+          PATH="$work/bin:$PATH" bash "$work/inst/update.sh" --dry-run --offline > "$work/offline.plan"
+          grep -q 'docker load -i' "$work/offline.plan"
+          ! grep -q 'compose pull' "$work/offline.plan"
+          rm -rf "$work/inst/offline"
+          if PATH="$work/bin:$PATH" bash "$work/inst/update.sh" --dry-run --offline >/dev/null 2>&1; then
+            echo "--offline without an archive must fail, not fall back to the registry" >&2
+            exit 1
+          fi

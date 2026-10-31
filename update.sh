@@ -13,7 +13,8 @@
 #                    way back to the image that was running)
 #   4. Backup      : tar ./config and ./data/nginx (small, and the first things
 #                    to break across a version step)
-#   5. Pull        : fetch the tags referenced by .env
+#   5. Pull        : fetch the tags referenced by .env, or with --offline load them
+#                    from a docker-save archive when the registry is unreachable
 #   6. Recreate    : up -d, forced when the compose file changed this run
 #   7. Validate    : container state, crash-loop detection, console port, the
 #                    .ver actually running, and the licensed root-domain quota
@@ -25,6 +26,8 @@
 #   sudo bash update.sh --no-backup     # skip the config/nginx backup
 #   sudo bash update.sh --keep-compose  # never touch the local docker-compose.yml
 #   sudo bash update.sh --db-backup     # also mysqldump lynxwaf_db (can be large)
+#   sudo bash update.sh --offline       # load images from ./offline/*.tar, skip the registry
+#   sudo bash update.sh --offline=/tmp/lynxwaf-ce-26.10.29.2-amd64.tar
 #
 # Exit codes: 0 updated or already current, 1 failure, 2 invalid usage.
 # ==============================================================================
@@ -52,6 +55,8 @@ DO_BACKUP=true
 DO_DB_BACKUP=false
 KEEP_COMPOSE=false
 COMPOSE_CHANGED=false
+OFFLINE=false
+OFFLINE_IMAGE_TAR=""
 
 log_info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[ OK ]${NC} $*"; }
@@ -77,8 +82,10 @@ while [ $# -gt 0 ]; do
         --no-backup)     DO_BACKUP=false; shift ;;
         --db-backup)    DO_DB_BACKUP=true; shift ;;
         --keep-compose) KEEP_COMPOSE=true; shift ;;
+        --offline)      OFFLINE=true; shift ;;
+        --offline=*)    OFFLINE=true; OFFLINE_IMAGE_TAR="${1#*=}"; shift ;;
         --help|-h)
-            sed -n '2,30p' "${BASH_SOURCE[0]}"
+            sed -n '2,32p' "${BASH_SOURCE[0]}"
             exit 0
             ;;
         *) usage_error "Unknown option '$1' (see --help)" ;;
@@ -113,6 +120,19 @@ if ! docker info >/dev/null 2>&1; then
     die "Cannot talk to the Docker daemon. Is it running (systemctl start docker) and is this user allowed to reach it?"
 fi
 log_success "Docker daemon reachable"
+
+# Resolve the archive before anything is backed up or recreated. A host that cannot
+# reach the registry needs this path to fail here, while the stack is still untouched,
+# rather than after the containers have been recreated from whatever was left locally.
+if [ "$OFFLINE" = true ]; then
+    if [ -z "$OFFLINE_IMAGE_TAR" ]; then
+        OFFLINE_IMAGE_TAR="$(ls -1t ./offline/*.tar ./offline/*.tar.gz ./images/*.tar 2>/dev/null | head -n 1 || true)"
+    fi
+    [ -n "$OFFLINE_IMAGE_TAR" ] && [ -f "$OFFLINE_IMAGE_TAR" ] || die \
+        "--offline needs an image archive. Put a 'docker save' tar in ${SCRIPT_DIR}/offline/ (or pass --offline=/path/to.tar)."
+    OFFLINE_IMAGE_TAR="$(cd "$(dirname "$OFFLINE_IMAGE_TAR")" && pwd)/$(basename "$OFFLINE_IMAGE_TAR")"
+    log_info "Offline mode: images will be loaded from ${OFFLINE_IMAGE_TAR}; the registry is not contacted."
+fi
 
 if [ "$(id -u)" != "0" ]; then
     log_warn "Not running as root: container inspection and bind-mount ownership checks may be limited."
@@ -291,14 +311,22 @@ esac
 # ------------------------------------------------------------------------------
 if [ "$DRY_RUN" = true ]; then
     log_step "Dry run stops here"
-    echo -e "Would run: ${BOLD}${COMPOSE_CMD[*]} pull${NC}"
+    if [ "$OFFLINE" = true ]; then
+        echo -e "Would run: ${BOLD}docker load -i ${OFFLINE_IMAGE_TAR}${NC} (no registry contact)"
+    else
+        echo -e "Would run: ${BOLD}${COMPOSE_CMD[*]} pull${NC}"
+    fi
     echo -e "Would run: ${BOLD}${COMPOSE_CMD[*]} up -d --remove-orphans${NC}$([ "$COMPOSE_CHANGED" = true ] && echo ' (with --force-recreate)')"
     echo -e "Would back up: ./config and ./data/nginx$([ "$DO_DB_BACKUP" = true ] && echo ' and mysqldump lynxwaf_db')"
     exit 0
 fi
 
 if [ "$ASSUME_YES" != true ] && [ -t 0 ]; then
-    echo -e "\nAbout to pull new images and recreate the LynxWAF containers in ${SCRIPT_DIR}."
+    if [ "$OFFLINE" = true ]; then
+        echo -e "\nAbout to load images from ${OFFLINE_IMAGE_TAR} and recreate the LynxWAF containers in ${SCRIPT_DIR}."
+    else
+        echo -e "\nAbout to pull new images and recreate the LynxWAF containers in ${SCRIPT_DIR}."
+    fi
     echo -e "WAF traffic blips for a few seconds while the data plane restarts."
     read -r -p "Continue? [y/N] " answer
     case "$answer" in
@@ -364,6 +392,26 @@ fi
 # ------------------------------------------------------------------------------
 # 5. Pull
 # ------------------------------------------------------------------------------
+if [ "$OFFLINE" = true ]; then
+    log_step "[5/7] Loading updated container images from ${OFFLINE_IMAGE_TAR}"
+    log_info "Offline mode: the registry is not contacted."
+    load_out="$(docker load -i "$OFFLINE_IMAGE_TAR" 2>&1)" || {
+        printf '%s\n' "$load_out" >&2
+        die "docker load failed on ${OFFLINE_IMAGE_TAR}. Nothing was recreated."
+    }
+    printf '%s\n' "$load_out" | sed 's/^/         /'
+    # The archive decides the tags, not this script. If it does not carry the exact
+    # names .env asks for, compose would recreate from whatever else is already local -
+    # which is the older image this run exists to replace, with no error anywhere.
+    missing=""
+    for img in "$DAEMON_IMAGE" "$OPENRESTY_IMAGE"; do
+        docker image inspect "$img" >/dev/null 2>&1 || missing="${missing} ${img}"
+    done
+    [ -z "$missing" ] || die "The archive does not provide:${missing}
+         Check LYNXWAF_DAEMON_IMAGE / LYNXWAF_OPENRESTY_IMAGE in .env against the tags inside the tar.
+         Nothing was recreated."
+    pulled=true
+else
 log_step "[5/7] Pulling updated container images from GHCR"
 # A registry hiccup must not abort an upgrade half-way. The failure this leaves behind is
 # the worst one available: the host ends up with the new control plane and the old data
@@ -408,6 +456,7 @@ if [ "$pulled" != true ]; then
     die "Retry once the registry is reachable: ${COMPOSE_CMD[*]} pull"
 fi
 rm -f "$PULL_ERR" "$PULL_ERR_NEW"
+fi
 
 # ------------------------------------------------------------------------------
 # 6. Recreate

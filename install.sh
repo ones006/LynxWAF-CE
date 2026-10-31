@@ -546,6 +546,19 @@ verify_install() {
         log_warn "Remediate with: chown -R 1000:1000 ${INSTALL_DIR}/data"
     fi
 
+    #    Writable is necessary, not sufficient. The marker is only consumed if the engine
+    #    image ships the supervisor, and an older cached image has none - then every
+    #    configuration change is written, saved, reported as successful and never applied.
+    #    This is the pairing update.sh refuses to install; an install must not ship it
+    #    quietly just because the registry was unreachable and a local image was reused.
+    if docker exec lynxwaf-openresty sh -c 'test -x /opt/lynxwaf/bin/lynxwaf-engine.sh' >/dev/null 2>&1; then
+        log_success "Engine image ships the reload supervisor."
+    else
+        log_warn "This engine image has no /opt/lynxwaf/bin/lynxwaf-engine.sh - it predates the reload supervisor."
+        log_warn "Configuration changes from the console will be saved and never applied until it is replaced:"
+        log_warn "  cd ${INSTALL_DIR} && ${DOCKER_COMPOSE_CMD} pull lynxwaf-openresty && ${DOCKER_COMPOSE_CMD} up -d lynxwaf-openresty"
+    fi
+
     # 4. One host-side reload. The engine container comes up while the daemon is still
     #    generating its configuration, so a first start can be serving the previous
     #    waf.conf - and the counter exporter lives in the new one. nginx -t first: a
@@ -573,7 +586,7 @@ verify_install() {
     if [ -f "$mirror" ]; then
         age=$(( $(date +%s) - $(stat -c %Y "$mirror" 2>/dev/null || echo 0) ))
         if [ "$age" -le 120 ] && docker exec lynxwaf-daemon test -r /app/data/nginx/conf.d/waf/data/lynxwaf_global_status.json >/dev/null 2>&1; then
-            log_success "Traffic counters are flowing to the console (mirror ${age}s old)."
+            log_success "Counter mirror is being written (${age}s old); requests are counted once a site exists."
         else
             log_warn "Counter mirror exists but is stale (${age}s) or unreadable by the daemon - the traffic chart will lag."
         fi

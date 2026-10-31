@@ -292,6 +292,73 @@ docker logs lynxwaf-openresty 2>&1 | grep -i 'refused reload'
 A stale first data point is normal: the console stores a per-minute delta, so the initial
 sample is only a baseline. Give it two minutes after the mirror starts moving.
 
+### H. The Update Cannot Reach GHCR (Offline Update)
+
+`docker compose pull` fails with `net/http: TLS handshake timeout` while this still
+succeeds:
+
+```bash
+ping -c 2 ghcr.io
+```
+
+ICMP proves a route, not a registry session. The decisive test is a request, and if it
+times out at connect time the destination is blocked on the path — a router, the ISP or a
+LAN firewall — rather than in Docker:
+
+```bash
+curl -sS -o /dev/null --max-time 15 -w '%{http_code} %{time_total}s\n' https://ghcr.io/v2/
+```
+
+A healthy answer from anywhere else is `401`: that endpoint requires a token. `000` after
+15 s means no TCP connection was ever made. Confirm the host's own firewall is not the
+cause (`sudo ufw status`) and check for a proxy the daemon might be using, which the shell
+does not:
+
+```bash
+systemctl show docker -p Environment; cat /etc/docker/daemon.json 2>/dev/null
+```
+
+If a proxy exists, pointing the daemon at it is the permanent fix. If there is none, update
+from an image archive. On any machine that can reach GHCR:
+
+```bash
+docker pull ghcr.io/ones006/lynxwaf-daemon:ce-latest
+docker pull ghcr.io/ones006/lynxwaf-openresty:ce-latest
+docker save -o lynxwaf-ce-$(date +%Y.%m.%d)-amd64.tar \
+  ghcr.io/ones006/lynxwaf-daemon:ce-latest \
+  ghcr.io/ones006/lynxwaf-openresty:ce-latest
+```
+
+The archive carries the tag names, and the host loads them verbatim: they must be the
+exact values of `LYNXWAF_DAEMON_IMAGE` and `LYNXWAF_OPENRESTY_IMAGE` in the host's `.env`
+(`ce-latest` unless it was pinned). Save the pinned tag instead if that is what `.env` asks
+for.
+
+Then on the host:
+
+```bash
+ssh admin@host 'mkdir -p /opt/lynxwaf/offline'
+scp lynxwaf-ce-*.tar admin@host:/opt/lynxwaf/offline/   # or copy by USB
+cd /opt/lynxwaf && sha256sum offline/*.tar && sudo bash update.sh --offline
+```
+
+`--offline` loads the newest archive in `./offline/` (or the one given as
+`--offline=/path/to.tar`), skips the registry entirely, and then reuses every other phase
+of the updater: snapshot, backup, recreate and validation. It refuses to continue if the
+archive does not carry the exact tags `.env` asks for, because compose would otherwise
+recreate from whatever older image happened to be local and report success.
+
+Two things are worth checking afterwards, because an offline host is exactly the case where
+a stale cached image can be reused without complaint:
+
+```bash
+docker exec lynxwaf-openresty sh -c 'test -x /opt/lynxwaf/bin/lynxwaf-engine.sh && echo supervisor-present'
+docker top lynxwaf-openresty | head -3   # PID 1 must be lynxwaf-engine.sh, not nginx
+```
+
+If the supervisor is missing, the engine predates the reload channel: the console will save
+configuration changes and nothing will apply them.
+
 ---
 
 ## 3. Full Clean Restart
