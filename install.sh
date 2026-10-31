@@ -293,6 +293,11 @@ prepare_environment() {
     mkdir -p "$INSTALL_DIR/data/nginx/conf.d/cert"
     mkdir -p "$INSTALL_DIR/data/wwwroot"
     mkdir -p "$INSTALL_DIR/logs"
+    # The L4 overlay mounts this into the daemon, which generates the console's
+    # self-signed certificate there on first boot. Created as root by Docker
+    # otherwise, and a UID 1000 daemon cannot write it - it then restart-loops on
+    # a certificate it is not allowed to make. Harmless when the overlay is unused.
+    mkdir -p "$INSTALL_DIR/ssl"
 
     cd "$INSTALL_DIR"
 
@@ -303,13 +308,21 @@ prepare_environment() {
     fi
 
     # The kernel-level eBPF/XDP overlay is deliberately NOT downloaded here - it
-    # is not in the repository at all any more. It grants the daemon uid 0,
-    # CAP_BPF/CAP_NET_ADMIN and the host network namespace, so a privileged
-    # artefact must never land on a server by default. An operator who wants the
-    # L4 datapath generates it on this host; see README "Kernel-Level L4 Defense
-    # (eBPF / XDP) - Opt-In".
+    # is not in the repository at all any more. It grants the daemon
+    # CAP_BPF/CAP_NET_ADMIN/CAP_SYS_ADMIN and the host network namespace, so a
+    # privileged artefact must never land on a server by default. An operator who
+    # wants the L4 datapath generates it on this host; see README "Kernel-Level
+    # L4 Defense (eBPF / XDP) - Opt-In".
     if [ -f "$INSTALL_DIR/docker-compose.ebpf.yml" ]; then
         log_warn "docker-compose.ebpf.yml is present from an earlier release. It is a privileged overlay, it is unused unless you pass -f docker-compose.ebpf.yml, and update.sh no longer refreshes it - regenerate it deliberately if you still need it."
+        # A uid-0 overlay is not merely less hardening than the current one, it is
+        # broken: cap_drop: ALL in the same file also removes CAP_DAC_OVERRIDE, so
+        # that process cannot reopen the 0600 ./data/.lock the uid-1000 instance
+        # created and the daemon restart-loops. Say it here, before the outage.
+        if command grep -qE '^[[:space:]]*user:[[:space:]]*"?0' "$INSTALL_DIR/docker-compose.ebpf.yml"; then
+            log_warn "That copy sets user: \"0:0\", which crash-loops the daemon with 'open /app/data/.lock: permission denied'. Replace it:"
+            log_warn "  docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay | sudo tee docker-compose.ebpf.yml > /dev/null"
+        fi
     fi
 
     # Verification / maintenance helpers: always brought in line with the repo
@@ -415,8 +428,8 @@ EOF
     chmod 600 "$INSTALL_DIR/.env"
 
     # Grant read/write access to dedicated container non-root user (UID 1000: lynxwaf)
-    chown -R 1000:1000 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" 2>/dev/null || true
-    chmod -R 775 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" 2>/dev/null || true
+    chown -R 1000:1000 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" "$INSTALL_DIR/ssl" 2>/dev/null || true
+    chmod -R 775 "$INSTALL_DIR/config" "$INSTALL_DIR/data" "$INSTALL_DIR/logs" "$INSTALL_DIR/ssl" 2>/dev/null || true
 }
 
 start_stack() {
@@ -653,6 +666,137 @@ verify_install() {
     fi
 }
 
+# BEGIN HOST-POSTURE — keep this block byte-identical in install.sh and update.sh;
+# .github/workflows/validate-compose.yml diffs the two copies and runs the result.
+#
+# An advisory report of what this host exposes, never a change to it. Configuring
+# the firewall from the installer is the half to avoid: one wrong rule locks an
+# operator out of an SSH session they cannot reopen remotely, and for a port
+# Docker publishes the rule would not even apply — published traffic is matched in
+# the FORWARD/DOCKER chains before INPUT, which is exactly why ufw cannot be used
+# to say "8379 is protected". The operator gets the bindings, the firewall state,
+# and the name of the control that actually works.
+report_host_posture() {
+    local dir="${POSTURE_DIR:-.}"
+    local env_file="${dir}/.env"
+    local console_port="8379"
+    local bind_ip=""
+    local raw=""
+
+    if [ -f "$env_file" ]; then
+        raw="$(grep -m1 -E '^LYNXWAF_PORT=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '[:space:]"' || true)"
+        [ -n "$raw" ] && console_port="$raw"
+        bind_ip="$(grep -m1 -E '^LYNXWAF_BIND_IP=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '[:space:]"' || true)"
+    fi
+    # Empty means the compose default, which is every interface.
+    [ -n "$bind_ip" ] || bind_ip="0.0.0.0"
+
+    echo ""
+    echo "  Host exposure report — informational; nothing here is modified"
+    echo "  ----------------------------------------------------------------"
+
+    # 1. What the published port mappings really bind. Read from the running
+    #    containers rather than a hardcoded list, so this cannot go stale when a
+    #    future release changes a port.
+    local maps=""
+    maps="$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep lynxwaf || true)"
+    if [ -z "$maps" ]; then
+        echo "  [skip] No LynxWAF container is visible to 'docker ps'. Re-run this once the stack is up."
+    else
+        local line="" name="" ports=""
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%% *}"
+            ports="${line#* }"
+            if [ -z "$ports" ] || [ "$ports" = "$line" ]; then
+                echo "  [host] ${name}: publishes nothing — it binds its own sockets, so its firewall"
+                echo "         exposure is decided by the addresses it listens on, not by port mapping."
+            elif printf '%s' "$ports" | grep -qE '(^| )(0\.0\.0\.0|\*):'; then
+                echo "  [open] ${name}: ${ports}"
+            else
+                echo "  [bind] ${name}: ${ports}"
+            fi
+        done <<POSTURE_MAPS
+$maps
+POSTURE_MAPS
+    fi
+
+    # 2. The one address that decides whether the management console is public.
+    local console_addr=""
+    if command -v ss >/dev/null 2>&1; then
+        console_addr="$(ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E "[:.]${console_port}\$" | head -n1 || true)"
+    elif command -v netstat >/dev/null 2>&1; then
+        console_addr="$(netstat -ltn 2>/dev/null | awk 'NR>2 {print $4}' | grep -E "[:.]${console_port}\$" | head -n1 || true)"
+    fi
+    if [ -z "$console_addr" ]; then
+        echo "  [skip] Console port ${console_port}: not listening yet, or this host has no ss/netstat."
+    elif printf '%s' "$console_addr" | grep -qE '^(127\.|\[::1\]|::1)'; then
+        echo "  [safe] Console listens on ${console_addr} — loopback only. Reach it through an SSH"
+        echo "         tunnel or a reverse proxy: that is the configuration this report cannot improve."
+    else
+        echo "  [open] Console listens on ${console_addr} while LYNXWAF_BIND_IP=${bind_ip}."
+        echo "         Set LYNXWAF_BIND_IP in ${env_file} to an address you administer from -"
+        echo "         127.0.0.1 plus an SSH tunnel or a reverse proxy is the usual choice - then"
+        echo "         recreate the stack. A ufw rule does not cover a port Docker publishes."
+    fi
+
+    # 3. Host firewall. "absent", "present but inactive" and "cannot tell" are
+    #    three different answers; collapsing them would be the false reassurance.
+    local fw="no host firewall detected (ufw and firewalld are not installed)"
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_line=""
+        ufw_line="$(ufw status 2>/dev/null | head -n1 || true)"
+        case "$ufw_line" in
+            *active*) fw="ufw: active" ;;
+            *inactive*) fw="ufw: installed but INACTIVE" ;;
+            *) fw="ufw: installed, state unreadable (run 'sudo ufw status verbose' as root)" ;;
+        esac
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        if firewall-cmd --state >/dev/null 2>&1; then
+            fw="${fw}; firewalld: running"
+        else
+            fw="${fw}; firewalld: not running"
+        fi
+    fi
+    local input_policy="unknown"
+    if command -v iptables >/dev/null 2>&1; then
+        input_policy="$(iptables -S INPUT 2>/dev/null | sed -n 's/^-P INPUT //p' | head -n1 || true)"
+        [ -n "$input_policy" ] || input_policy="unknown (iptables cannot be read without root)"
+    fi
+    echo "  Firewall         : ${fw}"
+    echo "  INPUT policy     : ${input_policy} — note that traffic to a published container port is"
+    echo "                     filtered in FORWARD/DOCKER, so this chain does not cover it either."
+
+    # 4. The L4/XDP overlay changes both answers: the daemon binds every interface
+    #    itself, and XDP drops happen before netfilter sees a packet.
+    local daemon_net=""
+    daemon_net="$(docker inspect -f '{{.HostConfig.NetworkMode}}' lynxwaf-daemon 2>/dev/null || true)"
+    if [ "$daemon_net" = "host" ]; then
+        echo "  [info] The daemon runs in the host network namespace (the L4/XDP overlay). Two"
+        echo "         consequences: LYNXWAF_BIND_IP no longer restricts the console, and XDP"
+        echo "         filtering happens BEFORE netfilter — so the console's port allow-list, not"
+        echo "         ufw, decides which packets reach this host. Keep SSH and ${console_port} in"
+        echo "         'Allowed TCP destination ports' or the datapath can lock you out."
+    elif [ -f "${dir}/docker-compose.ebpf.yml" ]; then
+        echo "  [info] ${dir}/docker-compose.ebpf.yml exists but is not in use — the L4 datapath"
+        echo "         is off until the stack is started with -f docker-compose.ebpf.yml."
+    fi
+
+    echo ""
+    echo "  Check it yourself:"
+    echo "     sudo docker ps --format '{{.Names}}  {{.Ports}}'"
+    echo "     sudo ss -ltn | grep -E ':(${console_port}|80|443|33060|6379)\b'"
+    echo "     sudo ufw status verbose        # or: sudo firewall-cmd --list-all"
+    echo "     sudo iptables -S INPUT; sudo iptables -S DOCKER-USER"
+    echo ""
+    echo "  This script deliberately writes no firewall rule. If you filter published ports, the"
+    echo "  chain to use is DOCKER-USER (it is not touched by 'docker compose up'), and the rule"
+    echo "  LynxWAF needs is an allow-list for 80/443 plus ${console_port} from your admin network."
+    return 0
+}
+# END HOST-POSTURE
+
 initialize_admin_user() {
     cd "$INSTALL_DIR"
     local admin_pwd=""
@@ -765,6 +909,10 @@ main() {
     start_stack
     initialize_admin_user
     verify_install
+    # Advisory only: a report that cannot fail an install. It runs last so the
+    # containers, their port bindings and the firewall state are all real by then.
+    POSTURE_DIR="$INSTALL_DIR"
+    report_host_posture || true
     display_completion_banner
     send_install_telemetry
 }

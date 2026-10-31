@@ -59,6 +59,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/
 3. Generates cryptographically secure, random 24-character secrets in `.env`.
 4. Pulls official container images and launches the stack with `docker compose up -d`.
 5. Provisions the initial `admin` account and outputs your Web Console URL!
+6. Prints a **host exposure report**: which ports are reachable from outside, whether a
+   host firewall is active, and what the L4 overlay changes. It informs only — the
+   installer never writes a firewall rule. See
+   [Troubleshooting J](docs/TROUBLESHOOTING.md).
 
 > **Web Console Access:**  
 > Navigate to `https://<YOUR_SERVER_IP>:8379/<SECURITY_ENTRANCE>`  
@@ -231,15 +235,16 @@ mode the *Network Defense (L4)* console reports the datapath as unavailable and 
 your settings as policy only — it never reports drops it did not make.
 
 To run the kernel datapath for real, generate the overlay on the server and start the
-daemon with it. It is deliberately **not a file in this repository**: it grants uid 0,
+daemon with it. It is deliberately **not a file in this repository**: it grants
 `CAP_BPF`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN` and the host network namespace, so nothing
 privileged lands on your machine through an installer, an update or a clone. The shipped
 image produces its own overlay, which keeps the text and the feature in the same place:
 
 ```bash
 cd /opt/lynxwaf
-docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay > docker-compose.ebpf.yml
-chmod 600 docker-compose.ebpf.yml
+# The pipe needs root: "sudo docker … > file" is your *shell* opening the file.
+docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay | sudo tee docker-compose.ebpf.yml > /dev/null
+sudo chmod 600 docker-compose.ebpf.yml
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
@@ -247,12 +252,16 @@ The file stays inert until you name it with `-f`. `update.sh` does not refresh i
 more — once it is yours, comparing and replacing it is an operator decision.
 
 The overlay gives the daemon `CAP_BPF` + `CAP_NET_ADMIN` + `CAP_SYS_ADMIN` and host
-networking. `SYS_ADMIN` is required by the kernel BPF verifier for pointer arithmetic
-inside `xdp_filter.c` (relaxed in kernel 6.7+). That has consequences: the console
-listens on port 8379 on **every** interface — `LYNXWAF_BIND_IP` no longer applies, so
-filter it yourself — files under `config/`, `logs/`, `data/` and `ssl/` become
-root-owned, and XDP drops happen before netfilter. Full list and the manual/air-gapped
-variant of the file: [Troubleshooting F](docs/TROUBLESHOOTING.md).
+networking, and the daemon **stays uid 1000**: the capabilities arrive as file
+capabilities on `/app/LynxWaf`, which is why the overlay has to switch
+`no-new-privileges` off for this one container (under NNP the kernel gives a capped
+binary an empty permitted set). `SYS_ADMIN` is required by the kernel BPF verifier for
+pointer arithmetic inside `xdp_filter.c` (relaxed in kernel 6.7+). That has
+consequences: the console listens on port 8379 on **every** interface —
+`LYNXWAF_BIND_IP` no longer applies, so filter it yourself — and XDP drops happen
+before netfilter, while the files under `config/`, `logs/`, `data/` and `ssl/` keep
+their uid 1000 owner. Full list and the manual/air-gapped variant of the file:
+[Troubleshooting F](docs/TROUBLESHOOTING.md).
 
 ### XDP Attachment Modes
 
@@ -300,7 +309,7 @@ Upgrading from Community Edition to Sovereign Edition requires **zero downtime a
 - [Quick Start Guide](docs/QUICKSTART.md) — Step-by-step installation, firewall ports, and initial onboarding.
 - [Configuration Guide](docs/CONFIGURATION.md) — Reverse proxy upstreams, SSL certificates, and custom rules.
 - [Architecture Deep Dive](docs/ARCHITECTURE.md) — Internal mechanics, request lifecycle, and data flow.
-- [Troubleshooting & FAQ](docs/TROUBLESHOOTING.md) — Port conflicts, log diagnosis, and password recovery.
+- [Troubleshooting & FAQ](docs/TROUBLESHOOTING.md) — Port conflicts, log diagnosis, password recovery, and how to read the host exposure report.
 - [Upgrade Guide](docs/UPGRADE_GUIDE.md) — In-place updates and enterprise license migration.
 
 ---

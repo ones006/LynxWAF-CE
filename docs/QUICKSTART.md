@@ -12,29 +12,46 @@ Welcome to **LynxWAF Community Edition (CE)**! This guide will walk you through 
 | **CPU Architecture** | x86_64 / amd64 or aarch64 / arm64 | 2+ Cores |
 | **RAM** | 1 GB Free Memory | 2 GB+ RAM |
 | **Disk Space** | 5 GB Free Disk Space | 20 GB+ NVMe SSD |
-| **Network Ports** | 80/tcp (HTTP), 443/tcp (HTTPS), 8379/tcp (Console) | Dedicated Public IPv4/IPv6 |
+| **Network Ports** | 80/tcp and 443/tcp open to your clients | Dedicated Public IPv4/IPv6. The console on 8379/tcp is for **you**, not for clients: bind it to loopback with `LYNXWAF_BIND_IP` and reach it over an SSH tunnel or a reverse proxy |
 
 ---
 
 ## 2. Firewall Prerequisites
 
-Ensure ports `80`, `443`, and `8379` are open on your host firewall:
+The data plane (`lynxwaf-openresty`) runs in the **host network namespace**, so its `80`
+and `443` are ordinary host sockets: if your firewall defaults to deny incoming, they have
+to be allowed or nothing gets proxied.
+
+The management console is a different case, and the usual advice to "open 8379" does not
+apply to it. In the default stack it is a *published* Docker port, and published traffic is
+matched in the `FORWARD`/`DOCKER` chains **before** the `INPUT` chain that `ufw` and
+`firewalld` manage. So `ufw allow 8379` accomplishes nothing, and later `ufw deny 8379`
+would not protect it either. Decide who may reach the console with `LYNXWAF_BIND_IP` in
+`.env` — `127.0.0.1` plus an SSH tunnel or a reverse proxy is the usual choice — and leave
+that port out of your firewall allow-list.
 
 ### On Ubuntu / Debian (UFW):
 ```bash
-sudo ufw allow 80/tcp comment 'HTTP Proxy'
-sudo ufw allow 443/tcp comment 'HTTPS Proxy'
-sudo ufw allow 8379/tcp comment 'LynxWAF Cyber-SOC Console'
-sudo ufw reload
+sudo ufw allow 80/tcp comment 'LynxWAF HTTP'
+sudo ufw allow 443/tcp comment 'LynxWAF HTTPS'
+sudo ufw status verbose
 ```
 
 ### On CentOS / RHEL / Rocky / AlmaLinux (Firewalld):
 ```bash
-sudo firewall-cmd --permanent --add-port=80/tcp
-sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --permanent --add-port=8379/tcp
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 ```
+
+Once the kernel L4 datapath is enabled ([Troubleshooting F](./TROUBLESHOOTING.md)) the
+console joins the host namespace too, and then its port *is* a host socket you can filter —
+while XDP drops happen before netfilter, so the console's own allowed-TCP-port list decides
+what reaches the host. Keep SSH and the console port in that list.
+
+`install.sh` and `update.sh` finish with a host exposure report that tells you which of
+these situations a machine is actually in. It writes no rule; reading it is
+[Troubleshooting J](./TROUBLESHOOTING.md).
 
 ---
 

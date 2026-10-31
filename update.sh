@@ -188,9 +188,9 @@ fi
 
 # Keep the stack file in step with upstream. The privileged eBPF/XDP overlay is
 # deliberately NOT synced: it is no longer distributed as a file at all, because
-# it grants uid 0, CAP_BPF + CAP_NET_ADMIN and the host network namespace. An
-# operator who wants it generates it on this host - see docs/TROUBLESHOOTING.md
-# section F.
+# it grants CAP_BPF + CAP_NET_ADMIN + CAP_SYS_ADMIN and the host network
+# namespace. An operator who wants it generates it on this host - see
+# docs/TROUBLESHOOTING.md section F.
 sync_stack_file() {
     local name="$1"
     local tmp="${SCRIPT_DIR}/${name}.upstream"
@@ -645,6 +645,140 @@ else
     log_info "No license file: Community Edition default applies — 1 root domain, unlimited subdomains, 1 node."
     log_info "Existing sites above that allowance keep serving; only adding a NEW root domain is refused."
 fi
+
+# BEGIN HOST-POSTURE — keep this block byte-identical in install.sh and update.sh;
+# .github/workflows/validate-compose.yml diffs the two copies and runs the result.
+#
+# An advisory report of what this host exposes, never a change to it. Configuring
+# the firewall from the installer is the half to avoid: one wrong rule locks an
+# operator out of an SSH session they cannot reopen remotely, and for a port
+# Docker publishes the rule would not even apply — published traffic is matched in
+# the FORWARD/DOCKER chains before INPUT, which is exactly why ufw cannot be used
+# to say "8379 is protected". The operator gets the bindings, the firewall state,
+# and the name of the control that actually works.
+report_host_posture() {
+    local dir="${POSTURE_DIR:-.}"
+    local env_file="${dir}/.env"
+    local console_port="8379"
+    local bind_ip=""
+    local raw=""
+
+    if [ -f "$env_file" ]; then
+        raw="$(grep -m1 -E '^LYNXWAF_PORT=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '[:space:]"' || true)"
+        [ -n "$raw" ] && console_port="$raw"
+        bind_ip="$(grep -m1 -E '^LYNXWAF_BIND_IP=' "$env_file" 2>/dev/null | cut -d'=' -f2- | tr -d '[:space:]"' || true)"
+    fi
+    # Empty means the compose default, which is every interface.
+    [ -n "$bind_ip" ] || bind_ip="0.0.0.0"
+
+    echo ""
+    echo "  Host exposure report — informational; nothing here is modified"
+    echo "  ----------------------------------------------------------------"
+
+    # 1. What the published port mappings really bind. Read from the running
+    #    containers rather than a hardcoded list, so this cannot go stale when a
+    #    future release changes a port.
+    local maps=""
+    maps="$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep lynxwaf || true)"
+    if [ -z "$maps" ]; then
+        echo "  [skip] No LynxWAF container is visible to 'docker ps'. Re-run this once the stack is up."
+    else
+        local line="" name="" ports=""
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%% *}"
+            ports="${line#* }"
+            if [ -z "$ports" ] || [ "$ports" = "$line" ]; then
+                echo "  [host] ${name}: publishes nothing — it binds its own sockets, so its firewall"
+                echo "         exposure is decided by the addresses it listens on, not by port mapping."
+            elif printf '%s' "$ports" | grep -qE '(^| )(0\.0\.0\.0|\*):'; then
+                echo "  [open] ${name}: ${ports}"
+            else
+                echo "  [bind] ${name}: ${ports}"
+            fi
+        done <<POSTURE_MAPS
+$maps
+POSTURE_MAPS
+    fi
+
+    # 2. The one address that decides whether the management console is public.
+    local console_addr=""
+    if command -v ss >/dev/null 2>&1; then
+        console_addr="$(ss -ltnH 2>/dev/null | awk '{print $4}' | grep -E "[:.]${console_port}\$" | head -n1 || true)"
+    elif command -v netstat >/dev/null 2>&1; then
+        console_addr="$(netstat -ltn 2>/dev/null | awk 'NR>2 {print $4}' | grep -E "[:.]${console_port}\$" | head -n1 || true)"
+    fi
+    if [ -z "$console_addr" ]; then
+        echo "  [skip] Console port ${console_port}: not listening yet, or this host has no ss/netstat."
+    elif printf '%s' "$console_addr" | grep -qE '^(127\.|\[::1\]|::1)'; then
+        echo "  [safe] Console listens on ${console_addr} — loopback only. Reach it through an SSH"
+        echo "         tunnel or a reverse proxy: that is the configuration this report cannot improve."
+    else
+        echo "  [open] Console listens on ${console_addr} while LYNXWAF_BIND_IP=${bind_ip}."
+        echo "         Set LYNXWAF_BIND_IP in ${env_file} to an address you administer from -"
+        echo "         127.0.0.1 plus an SSH tunnel or a reverse proxy is the usual choice - then"
+        echo "         recreate the stack. A ufw rule does not cover a port Docker publishes."
+    fi
+
+    # 3. Host firewall. "absent", "present but inactive" and "cannot tell" are
+    #    three different answers; collapsing them would be the false reassurance.
+    local fw="no host firewall detected (ufw and firewalld are not installed)"
+    if command -v ufw >/dev/null 2>&1; then
+        local ufw_line=""
+        ufw_line="$(ufw status 2>/dev/null | head -n1 || true)"
+        case "$ufw_line" in
+            *active*) fw="ufw: active" ;;
+            *inactive*) fw="ufw: installed but INACTIVE" ;;
+            *) fw="ufw: installed, state unreadable (run 'sudo ufw status verbose' as root)" ;;
+        esac
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        if firewall-cmd --state >/dev/null 2>&1; then
+            fw="${fw}; firewalld: running"
+        else
+            fw="${fw}; firewalld: not running"
+        fi
+    fi
+    local input_policy="unknown"
+    if command -v iptables >/dev/null 2>&1; then
+        input_policy="$(iptables -S INPUT 2>/dev/null | sed -n 's/^-P INPUT //p' | head -n1 || true)"
+        [ -n "$input_policy" ] || input_policy="unknown (iptables cannot be read without root)"
+    fi
+    echo "  Firewall         : ${fw}"
+    echo "  INPUT policy     : ${input_policy} — note that traffic to a published container port is"
+    echo "                     filtered in FORWARD/DOCKER, so this chain does not cover it either."
+
+    # 4. The L4/XDP overlay changes both answers: the daemon binds every interface
+    #    itself, and XDP drops happen before netfilter sees a packet.
+    local daemon_net=""
+    daemon_net="$(docker inspect -f '{{.HostConfig.NetworkMode}}' lynxwaf-daemon 2>/dev/null || true)"
+    if [ "$daemon_net" = "host" ]; then
+        echo "  [info] The daemon runs in the host network namespace (the L4/XDP overlay). Two"
+        echo "         consequences: LYNXWAF_BIND_IP no longer restricts the console, and XDP"
+        echo "         filtering happens BEFORE netfilter — so the console's port allow-list, not"
+        echo "         ufw, decides which packets reach this host. Keep SSH and ${console_port} in"
+        echo "         'Allowed TCP destination ports' or the datapath can lock you out."
+    elif [ -f "${dir}/docker-compose.ebpf.yml" ]; then
+        echo "  [info] ${dir}/docker-compose.ebpf.yml exists but is not in use — the L4 datapath"
+        echo "         is off until the stack is started with -f docker-compose.ebpf.yml."
+    fi
+
+    echo ""
+    echo "  Check it yourself:"
+    echo "     sudo docker ps --format '{{.Names}}  {{.Ports}}'"
+    echo "     sudo ss -ltn | grep -E ':(${console_port}|80|443|33060|6379)\b'"
+    echo "     sudo ufw status verbose        # or: sudo firewall-cmd --list-all"
+    echo "     sudo iptables -S INPUT; sudo iptables -S DOCKER-USER"
+    echo ""
+    echo "  This script deliberately writes no firewall rule. If you filter published ports, the"
+    echo "  chain to use is DOCKER-USER (it is not touched by 'docker compose up'), and the rule"
+    echo "  LynxWAF needs is an allow-list for 80/443 plus ${console_port} from your admin network."
+    return 0
+}
+# END HOST-POSTURE
+# Advisory only: this report must never be the reason an update is reported as failed.
+POSTURE_DIR="$SCRIPT_DIR"
+report_host_posture || true
 
 "${COMPOSE_CMD[@]}" ps || true
 

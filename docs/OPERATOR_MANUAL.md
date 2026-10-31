@@ -43,6 +43,15 @@ Sebelum instalasi, pastikan firewall server mengizinkan akses ke port-port berik
 | **33060** | TCP | Hanya Localhost (`127.0.0.1`) | Port debug Database MySQL (tidak terekspos keluar) |
 | **6379** | TCP | Hanya Localhost (`127.0.0.1`) | Port Redis Cache (tidak terekspos keluar) |
 
+> **Catatan:** untuk port yang dipublish Docker (`8379`, `33060`, `6379`), aturan `ufw`
+> pada chain `INPUT` tidak berlaku — trafik ke port tersebut dilewati lewat chain
+> `FORWARD`/`DOCKER` lebih dulu. Jadi `ufw deny 8379` tidak melindungi console; yang
+> melindungi adalah `LYNXWAF_BIND_IP` di `.env` (mis. `127.0.0.1` lalu diakses lewat SSH
+> tunnel / reverse proxy). Port `80` dan `443` benar-benar socket host, sehingga aturan
+> firewall berlaku untuk keduanya. `install.sh` dan `update.sh` mencetak *host exposure
+> report* yang menunjukkan keadaan sebenarnya di mesin Anda; keduanya tidak pernah
+> menulis aturan firewall.
+
 ---
 
 ## 3. SOP 1: Instalasi & Deployment Awal

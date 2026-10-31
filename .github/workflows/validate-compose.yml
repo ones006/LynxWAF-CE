@@ -39,12 +39,11 @@ jobs:
             .env
           docker compose config --quiet
           # The eBPF/XDP overlay is no longer a file in this repository - it grants
-          # uid 0, CAP_BPF/CAP_NET_ADMIN/CAP_SYS_ADMIN and the host network
-          # namespace, so it must not be distributed as source. Operators write what
-          # the documentation shows, therefore the documented snippet is the thing
-          # that has to merge with the base stack: if it drifts, the failure belongs
-          # here and not on an operator's server. Canonical text:
-          # modules/ebpf_overlay.go upstream.
+          # CAP_BPF/CAP_NET_ADMIN/CAP_SYS_ADMIN and the host network namespace, so it
+          # must not be distributed as source. Operators write what the documentation
+          # shows, therefore the documented snippet is the thing that has to merge with
+          # the base stack: if it drifts, the failure belongs here and not on an
+          # operator's server. Canonical text: modules/ebpf_overlay.go upstream.
           awk '/LYNXWAF-XDP-OVERLAY-START/{f=1;next} /LYNXWAF-XDP-OVERLAY-END/{f=0} f && !/^```/' docs/TROUBLESHOOTING.md > docker-compose.ebpf.yml
           test -s docker-compose.ebpf.yml
           grep -q '^services:$' docker-compose.ebpf.yml
@@ -57,8 +56,36 @@ jobs:
           echo "$effective" | grep -A2 '^    cap_add:' | grep -q 'BPF'
           echo "$effective" | grep -A2 '^    cap_add:' | grep -q 'NET_ADMIN'
           echo "$effective" | grep -A3 '^    cap_add:' | grep -q 'SYS_ADMIN'
-          test "$(echo "$effective" | sed -n '/cap_add:/,/ulimits:/p' | grep -c '^      - ')" -eq 3
+          test "$(echo "$effective" | sed -n '/^    cap_add:/,/^    security_opt:/p' | grep -c '^      - ')" -eq 3
           ! echo "$effective" | grep -qE 'NET_RAW|DAC_OVERRIDE|NET_BIND_SERVICE|SETUID|SETGID'
+          # The daemon must stay uid 1000. Forcing user: "0:0" to make cap_add apply
+          # was the original design and it crash-looped the container: cap_drop: ALL
+          # also removes CAP_DAC_OVERRIDE, so that process cannot reopen ./data/.lock
+          # (0600) that the uid-1000 instance created.
+          ! echo "$effective" | grep -qE '^[[:space:]]+user:'
+          # The image carries the three capabilities as file capabilities on
+          # /app/LynxWaf, and the kernel gives a capped binary an empty permitted set
+          # under no-new-privileges. Compose appends the sequence, so this entry has to
+          # land after the base file's "true" - assert the merged result, not the file.
+          echo "$effective" | grep -q 'no-new-privileges:false'
+          merged="$(docker compose -f docker-compose.yml -f docker-compose.ebpf.yml config)"
+          # Service blocks sit at two spaces in "config" output; take only the daemon's.
+          daemon_merged="$(printf '%s\n' "$merged" | sed -n '/^  lynxwaf-daemon:/,/^  [a-z0-9_-]*:$/p')"
+          nnp_lines="$(printf '%s\n' "$daemon_merged" | grep 'no-new-privileges:' || true)"
+          if [ "$(printf '%s\n' "$nnp_lines" | grep -c . )" -lt 2 ]; then
+            echo "the base no-new-privileges:true survived unmerged - the overlay entry is not being appended" >&2
+            exit 1
+          fi
+          # The runtime reads the list in order and the last value wins, so the appended
+          # overlay entry is the effective one.
+          if ! printf '%s\n' "$nnp_lines" | tail -1 | grep -q false; then
+            echo "the merged daemon config still enforces no-new-privileges - the file capabilities would be inert" >&2
+            exit 1
+          fi
+          if printf '%s\n' "$daemon_merged" | grep -qE '^[[:space:]]+user:'; then
+            echo "the merged daemon runs as root; the overlay must keep it uid 1000" >&2
+            exit 1
+          fi
           rm -f docker-compose.ebpf.yml
 
       - name: Validate Shell Scripts Syntax
@@ -163,3 +190,41 @@ jobs:
             exit 1
           fi
           echo "$output" | grep -q 'directive is duplicate'
+
+      # The host exposure report is the installers' only word about firewalls, and it
+      # earns that role by changing nothing. Both halves need enforcing: the function
+      # is defined twice (install.sh and update.sh cannot source each other), and a
+      # report that can fail would abort an install under set -e - which is how an
+      # advisory becomes an outage.
+      - name: Host exposure report stays advisory and in sync
+        run: |
+          set -eo pipefail
+          sed -n '/^# BEGIN HOST-POSTURE/,/^# END HOST-POSTURE/p' install.sh > "$RUNNER_TEMP/posture.install"
+          sed -n '/^# BEGIN HOST-POSTURE/,/^# END HOST-POSTURE/p' update.sh > "$RUNNER_TEMP/posture.update"
+          test -s "$RUNNER_TEMP/posture.install"
+          if ! cmp -s "$RUNNER_TEMP/posture.install" "$RUNNER_TEMP/posture.update"; then
+            echo "the two copies of report_host_posture have drifted" >&2
+            diff "$RUNNER_TEMP/posture.install" "$RUNNER_TEMP/posture.update" >&2 || true
+            exit 1
+          fi
+          grep -q 'report_host_posture || true' install.sh
+          grep -q 'report_host_posture || true' update.sh
+
+          # One mutating command here could lock an operator out of the very SSH
+          # session the install is running over, so the contract is greppable.
+          if grep -nE 'ufw +(allow|deny|limit|delete|disable|enable|default)|firewall-cmd +--(add|remove|change|permanent|reload)|iptables +-(A|I|D|P|F|X)|nft +(add|delete|flush|create)' \
+               "$RUNNER_TEMP/posture.install"; then
+            echo "the exposure report writes firewall rules; it is advisory by contract" >&2
+            exit 1
+          fi
+
+          # Run it the way the installers do - set -e, and against a directory with no
+          # LynxWAF installed and no .env: the worst host this function can meet, and it
+          # still has to return 0.
+          bare="$(mktemp -d)"
+          bash -c 'set -eo pipefail; . "$1"; POSTURE_DIR="$2"; report_host_posture' \
+            _ "$RUNNER_TEMP/posture.install" "$bare" > "$RUNNER_TEMP/posture.out"
+          grep -q 'Host exposure report' "$RUNNER_TEMP/posture.out"
+          grep -q 'deliberately writes no firewall rule' "$RUNNER_TEMP/posture.out"
+          echo "report on a bare host:"
+          sed 's/^/  /' "$RUNNER_TEMP/posture.out"

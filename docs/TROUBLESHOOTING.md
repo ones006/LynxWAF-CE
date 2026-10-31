@@ -121,18 +121,22 @@ Your L4 settings are stored and will take effect the moment a datapath is attach
 
 **To make the L4 datapath real**, write the opt-in overlay on this host and start the
 daemon with it. The overlay is **not a file in this repository**: it grants the daemon
-uid 0, `CAP_BPF` + `CAP_NET_ADMIN` and the host network namespace, so a privileged
-artefact must never reach a server through an installer, an update sync or a
+`CAP_BPF` + `CAP_NET_ADMIN` + `CAP_SYS_ADMIN` and the host network namespace, so a
+privileged artefact must never reach a server through an installer, an update sync or a
 `git clone`. You generate it deliberately, and it stays inert until you pass it with
 `-f`.
 
 Recommended — ask the image you already run for its own overlay, so the text cannot be
-out of date (needs `lynxwaf-daemon` `v26.10.24.5` or newer):
+out of date (needs a `lynxwaf-daemon` image that ships `ebpf --overlay`):
 
 ```bash
 cd /opt/lynxwaf
-docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay > docker-compose.ebpf.yml
-chmod 600 docker-compose.ebpf.yml
+# The pipe needs root: "sudo docker … > file" is *your shell* opening the file.
+docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay | sudo tee docker-compose.ebpf.yml > /dev/null
+sudo chmod 600 docker-compose.ebpf.yml
+# Docker creates ./ssl root-owned, and the daemon runs as uid 1000: without this it
+# cannot write the console's self-signed certificate and restart-loops.
+sudo mkdir -p ssl && sudo chown 1000:1000 ssl
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
@@ -146,19 +150,30 @@ the base stack on every push — so a typo here fails the pipeline instead of yo
 services:
   lynxwaf-daemon:
     network_mode: "host"
-    user: "0:0"
+    # Deliberately no "user:" line. The daemon keeps the uid 1000 the base file gives
+    # it; the L4 capabilities arrive as file capabilities on /app/LynxWaf, so nothing
+    # here has to make the control plane root to reach the kernel. Making it root was
+    # the original design and it broke the state files: cap_drop: ALL removes
+    # CAP_DAC_OVERRIDE, so a uid-0 daemon cannot reopen ./data/.lock (0600, created by
+    # the uid-1000 instance it replaced) and the container restart-loops.
     volumes:
       - ./ssl:/app/ssl:rw
     # Only what an XDP attach needs: CAP_BPF to load the program, CAP_NET_ADMIN to
-    # hook it onto the NIC. NET_RAW, DAC_OVERRIDE, SETUID, SETGID and NET_BIND_SERVICE
-    # are absent on purpose — the process is already uid 0, so they would only widen
-    # the blast radius.
+    # hook it onto the NIC, and CAP_SYS_ADMIN because the BPF verifier only allows the
+    # pointer arithmetic xdp_filter.c uses for processes holding it (relaxed in 6.7+).
+    # NET_RAW, DAC_OVERRIDE and NET_BIND_SERVICE are absent on purpose — uid 1000
+    # already cannot read what it should not.
     cap_drop:
       - ALL
     cap_add:
       - BPF
       - NET_ADMIN
       - SYS_ADMIN
+    # The base stack sets no-new-privileges:true, which silently defeats the file
+    # capabilities: under NNP, execve gives a capped binary an empty permitted set.
+    # Compose appends sequences, so this entry lands last and wins.
+    security_opt:
+      - no-new-privileges:false
     # Kernels before 5.11 account BPF memory against RLIMIT_MEMLOCK.
     ulimits:
       memlock: -1
@@ -185,6 +200,18 @@ services:
 you keep a copy, keeping it current is your call: regenerate it, `diff` it against yours,
 then replace it deliberately.
 
+**The image has to carry the capabilities.** `cap_add` alone does not reach a non-root
+process, so a daemon image built before the file-capability change keeps reporting
+`UNAVAILABLE` even with this overlay applied. `update.sh` pulls such an image; to check
+what the running daemon actually has:
+
+```bash
+sudo docker compose exec lynxwaf-daemon grep CapEff /proc/self/status
+```
+
+`CapEff: 0000000000000000` means no privileges at all — the default stack. After the
+overlay and a current image the mask is non-zero (it contains `CAP_NET_ADMIN`, bit 12).
+
 Then reload *Network Defense (L4)*: the interface list now shows the host NICs, and
 after enabling mitigation the status becomes `ATTACHED` with live counters.
 
@@ -192,9 +219,12 @@ Understand what the overlay does before you enable it. The daemon joins the host
 namespace (the console listens on port 8379 directly, the base `ports:` mapping is
 ignored **and `LYNXWAF_BIND_IP` no longer restricts it** — bind the console to a
 firewall or a reverse proxy first), MySQL/Redis are reached through their published
-loopback ports, the process runs as root so files under `config/`, `logs/` and `data/`
-become root-owned, and XDP drops happen before netfilter — keep SSH and the console port
-in the allowed TCP list or you can lock yourself out.
+loopback ports, `no-new-privileges` is switched off for this one container so the file
+capabilities survive execve (the bounding set still holds nothing but the three above),
+and XDP drops happen before netfilter — keep SSH and the console port in the allowed TCP
+list or you can lock yourself out. The daemon stays uid 1000, so the files under
+`config/`, `logs/` and `data/` keep their owner and dropping the overlay later needs no
+chown.
 
 **Still unavailable with the overlay?** The kernel or virtual NIC is the limit, not
 the container:
@@ -402,6 +432,54 @@ the pending sites serve immediately. `install.sh` no longer writes that line, an
 repairs a host that still carries it: it keeps a timestamped copy beside the file, removes the
 line, and runs `nginx -t` inside the engine, restoring the copy if the result does not
 validate. Run the manual commands above only when the updater reports that it could not.
+
+---
+
+### J. Reading the Host Exposure Report
+
+`install.sh` and `update.sh` finish with a short report of how this host exposes the
+stack. It is **advisory and changes nothing** — no firewall rule is ever written by the
+installer, because a wrong rule can lock you out of the SSH session the install is
+running over, and because for a port Docker publishes a `ufw` rule would not help
+anyway (see below).
+
+| Marker | Meaning | What to do |
+| --- | --- | --- |
+| `[open] name: 0.0.0.0:8379->8379/tcp` | A published mapping reachable from every interface | Restrict it — for the console that means `LYNXWAF_BIND_IP` in `.env` |
+| `[bind] name: 127.0.0.1:33060->3306/tcp` | Published, but loopback only | Nothing. This is the intended shape for MySQL and Redis |
+| `[host] name: publishes nothing` | The container binds its own sockets in the host namespace | The addresses it listens on decide exposure, not port mapping |
+| `[safe] Console listens on 127.0.0.1:8379` | The console is not reachable from outside | Reach it over an SSH tunnel or a reverse proxy |
+| `[skip] …` | No `docker`/`ss` visible, or the stack is not up yet | Re-run once the stack is running |
+
+**Why `ufw` cannot protect the console.** A port published by Docker is delivered
+through the `FORWARD`/`DOCKER` chains before the `INPUT` chain that `ufw` and
+`firewalld` manage, so `ufw deny 8379` silently does nothing for a published container
+port while looking like a rule. The two controls that really apply are:
+
+```bash
+# 1. Bind the console somewhere you administer from, then recreate the daemon.
+echo 'LYNXWAF_BIND_IP=127.0.0.1' >> /opt/lynxwaf/.env
+cd /opt/lynxwaf && docker compose up -d --force-recreate lynxwaf-daemon
+# … then reach it:  ssh -L 8443:127.0.0.1:8443 you@thishost
+
+# 2. Or filter the published ports yourself, in the chain Docker does not rewrite.
+#    Read it first: an empty DOCKER-USER with an INPUT policy of ACCEPT means
+#    nothing here is filtering these ports today.
+sudo iptables -S DOCKER-USER
+sudo iptables -S INPUT
+```
+
+Write rules in `DOCKER-USER` only if you also accept the consequences: it is host
+state, `docker compose up` does not manage it, and one wrong line about your admin
+address ends your session. Keep `22` and the console port reachable before you add
+anything that drops.
+
+**With the L4/XDP overlay applied** ([section F](#f-xdp-datapath-is-not-attached-the-process-lacks-cap_net_admin))
+the report says the daemon runs in the host network namespace. Then `LYNXWAF_BIND_IP`
+no longer restricts the console (it listens on `:8379` on every interface by itself),
+and XDP filtering happens *before* netfilter, so neither `ufw` nor `DOCKER-USER` can
+decide which packets the datapath drops — the console's own allowed-TCP-port list does.
+Keep SSH and the console port in it.
 
 ---
 
