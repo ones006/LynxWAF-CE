@@ -30,6 +30,8 @@ INSTALL_DIR="/opt/lynxwaf"
 DEFAULT_PORT="8379"
 WAF_PORT="${DEFAULT_PORT}"
 NON_INTERACTIVE=false
+OFFLINE=false
+OFFLINE_IMAGE_TAR=""
 
 # Ensure valid working directory (in case caller was standing in a deleted folder)
 if ! pwd >/dev/null 2>&1; then
@@ -130,6 +132,15 @@ while [[ $# -gt 0 ]]; do
             NON_INTERACTIVE=true
             shift
             ;;
+        --offline)
+            OFFLINE=true
+            shift
+            ;;
+        --offline=*)
+            OFFLINE=true
+            OFFLINE_IMAGE_TAR="${1#*=}"
+            shift
+            ;;
         -h|--help)
             echo "Usage: bash install.sh [options]"
             echo ""
@@ -137,6 +148,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --dir <path>       Target directory for installation (default: /opt/lynxwaf)"
             echo "  --port <port>      Cyber-SOC Web Console Port (default: 8379)"
             echo "  -y, --yes          Non-interactive mode (auto-accept defaults)"
+            echo "  --offline[=<tar>]  Load images from a 'docker save' archive instead of GHCR"
+            echo "                     (default archive: <dir>/offline/*.tar)"
             echo "  -h, --help         Show this help message"
             exit 0
             ;;
@@ -347,7 +360,10 @@ http {
     include /etc/nginx/*.conf;
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/vhost/*.conf;
-    include /etc/nginx/user/*.conf;
+    # Deliberately not /etc/nginx/user/*.conf: those are per-site operator snippets, and
+    # each vhost includes its own inside its server block. At http level one site's
+    # add_header would apply to every site, and a directive the http block already sets
+    # (client_max_body_size) would be duplicated, making nginx refuse the configuration.
 
     server {
         listen 80 default_server;
@@ -404,43 +420,83 @@ EOF
 }
 
 start_stack() {
-    log_info "Pulling official container images from GitHub Container Registry (GHCR)..."
     cd "$INSTALL_DIR"
 
-    # Retry before concluding anything: a single dropped TLS handshake against GHCR used
-    # to leave the install asserting it was "using local cached images" whether or not any
-    # existed. The outcome is now classified, because "unreachable but cached" and
-    # "unreachable and empty" are different installs.
-    PULL_ERR="$(mktemp)"
-    pulled=false
-    for attempt in 1 2 3 4; do
-        if $DOCKER_COMPOSE_CMD pull 2>"$PULL_ERR"; then
-            pulled=true
-            break
+    daemon_img="$(grep -oE '^LYNXWAF_DAEMON_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
+    engine_img="$(grep -oE '^LYNXWAF_OPENRESTY_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
+    daemon_img="${daemon_img:-ghcr.io/ones006/lynxwaf-daemon:ce-latest}"
+    engine_img="${engine_img:-ghcr.io/ones006/lynxwaf-openresty:ce-latest}"
+
+    if [ "$OFFLINE" = true ]; then
+        # A host that cannot reach GHCR still has to install. Every image it runs comes
+        # from one archive, and the tags are checked against .env before anything is
+        # started: compose resolves names, so a missing tag would send it back to the
+        # registry mid-install, which is the one thing offline mode must not do.
+        if [ -z "$OFFLINE_IMAGE_TAR" ]; then
+            OFFLINE_IMAGE_TAR="$(ls -1t ./offline/*.tar ./offline/*.tar.gz ./images/*.tar 2>/dev/null | head -n 1 || true)"
         fi
-        if [ "$attempt" -lt 4 ]; then
-            log_warn "Pull attempt $attempt failed; retrying in $((attempt * 15))s."
-            sleep $((attempt * 15))
-        fi
-    done
-    if [ "$pulled" != true ]; then
-        tail -n 3 "$PULL_ERR" >&2 || true
-        rm -f "$PULL_ERR"
-        daemon_img="$(grep -oE '^LYNXWAF_DAEMON_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
-        engine_img="$(grep -oE '^LYNXWAF_OPENRESTY_IMAGE=.*' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)"
-        daemon_img="${daemon_img:-ghcr.io/ones006/lynxwaf-daemon:ce-latest}"
-        engine_img="${engine_img:-ghcr.io/ones006/lynxwaf-openresty:ce-latest}"
-        if docker image inspect "$daemon_img" >/dev/null 2>&1 \
-            && docker image inspect "$engine_img" >/dev/null 2>&1; then
-            log_warn "GHCR was unreachable, but both LynxWAF images are already on this host: continuing on them."
-            log_warn "They may predate the published tags. Re-run 'docker compose pull' once the registry is reachable."
-        else
-            log_error "Could not fetch the LynxWAF images and no usable copy is cached locally. Aborting."
-            log_error "Check reachability from this host: curl -sSI https://ghcr.io/v2/ | head -1"
+        if [ -z "$OFFLINE_IMAGE_TAR" ] || [ ! -f "$OFFLINE_IMAGE_TAR" ]; then
+            if [ -n "$OFFLINE_IMAGE_TAR" ]; then
+                log_error "No such image archive: ${OFFLINE_IMAGE_TAR}"
+            else
+                log_error "--offline needs an image archive, and none was found in ${INSTALL_DIR}/offline/."
+            fi
+            log_error "On a host with registry access, save the two images this install expects:"
+            log_error "  docker pull ${daemon_img} ${engine_img}"
+            log_error "  docker save ${daemon_img} ${engine_img} -o lynxwaf-ce-<version>-<arch>.tar"
+            log_error "Copy it into ${INSTALL_DIR}/offline/ and re-run, or pass --offline=/path/to.tar."
             exit 1
         fi
+        OFFLINE_IMAGE_TAR="$(cd "$(dirname "$OFFLINE_IMAGE_TAR")" && pwd)/$(basename "$OFFLINE_IMAGE_TAR")"
+        log_info "Offline mode: loading images from ${OFFLINE_IMAGE_TAR}; the registry is not contacted."
+        docker load -i "$OFFLINE_IMAGE_TAR" || {
+            log_error "docker load failed on ${OFFLINE_IMAGE_TAR}."
+            exit 1
+        }
+        if ! docker image inspect "$daemon_img" >/dev/null 2>&1 \
+            || ! docker image inspect "$engine_img" >/dev/null 2>&1; then
+            log_error "The archive loaded, but it does not contain both images this install runs:"
+            log_error "  ${daemon_img}"
+            log_error "  ${engine_img}"
+            log_error "'docker save' keeps the tag an image was pulled with, so the tags must match .env exactly."
+            exit 1
+        fi
+        log_success "Both LynxWAF images are present locally."
     else
-        rm -f "$PULL_ERR"
+        log_info "Pulling official container images from GitHub Container Registry (GHCR)..."
+
+        # Retry before concluding anything: a single dropped TLS handshake against GHCR used
+        # to leave the install asserting it was "using local cached images" whether or not any
+        # existed. The outcome is now classified, because "unreachable but cached" and
+        # "unreachable and empty" are different installs.
+        PULL_ERR="$(mktemp)"
+        pulled=false
+        for attempt in 1 2 3 4; do
+            if $DOCKER_COMPOSE_CMD pull 2>"$PULL_ERR"; then
+                pulled=true
+                break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+                log_warn "Pull attempt $attempt failed; retrying in $((attempt * 15))s."
+                sleep $((attempt * 15))
+            fi
+        done
+        if [ "$pulled" != true ]; then
+            tail -n 3 "$PULL_ERR" >&2 || true
+            rm -f "$PULL_ERR"
+            if docker image inspect "$daemon_img" >/dev/null 2>&1 \
+                && docker image inspect "$engine_img" >/dev/null 2>&1; then
+                log_warn "GHCR was unreachable, but both LynxWAF images are already on this host: continuing on them."
+                log_warn "They may predate the published tags. Re-run 'docker compose pull' once the registry is reachable."
+            else
+                log_error "Could not fetch the LynxWAF images and no usable copy is cached locally. Aborting."
+                log_error "If this host cannot reach GHCR, install from a saved archive: sudo bash install.sh --offline=/path/to.tar"
+                log_error "Check reachability from this host: curl -sSI https://ghcr.io/v2/ | head -1"
+                exit 1
+            fi
+        else
+            rm -f "$PULL_ERR"
+        fi
     fi
 
     # Initialize default configurations from container image if missing on host
@@ -451,7 +507,7 @@ start_stack() {
         # address instead — a seeded value would surface in the console, the self-
         # signed certificate SANs and the attack map. Cached ce-latest images may
         # predate the build-side fix, so the removal happens here as well.
-        docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" ghcr.io/ones006/lynxwaf-daemon:ce-latest -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null; rm -f /mnt_config/serverip.json' 2>/dev/null || true
+        docker run --rm --entrypoint sh -v "$INSTALL_DIR/config:/mnt_config" "$daemon_img" -c 'cp -r /app/config/* /mnt_config/ 2>/dev/null; rm -f /mnt_config/serverip.json' 2>/dev/null || true
     fi
 
     # Ensure MySQL configuration points to internal container network with secure credentials

@@ -425,6 +425,12 @@ reason_shown=false
 for attempt in 1 2 3 4; do
     if "${COMPOSE_CMD[@]}" pull 2>"$PULL_ERR_NEW"; then
         pulled=true
+        # Some compose builds draw their progress on stderr, which is captured here for
+        # the retry diagnostics; without this the successful pull is a blank line and an
+        # operator cannot tell "already current" from "nothing was attempted".
+        if [ -s "$PULL_ERR_NEW" ]; then
+            command sed 's/^/         /' "$PULL_ERR_NEW"
+        fi
         break
     fi
     # Show the reason on the first failure and whenever it changes. Two minutes of blind
@@ -506,6 +512,45 @@ if [ "$healthy" != true ]; then
 fi
 log_success "All four containers are running"
 
+# install.sh used to put "include /etc/nginx/user/*.conf" in the http block. Each site
+# vhost already includes its own snippet inside its server block, so the extra http-level
+# glob did two harmful things: one operator's add_header applied to every other site, and
+# a snippet setting any directive the http block already sets - client_max_body_size is
+# the usual one - became a duplicate. nginx then refuses the whole configuration, the
+# supervisor keeps serving the previous one, and the reload marker is retried forever.
+# install.sh no longer emits that line, but a host installed before it stopped still
+# carries it, and the updater is the only step such a host runs. The file is generated,
+# not hand-written, so it is repaired here - validated with the engine's own nginx and
+# restored from a timestamped backup if the result does not pass.
+ENGINE_CONF="${SCRIPT_DIR}/data/nginx/conf/nginx.conf"
+if [ -f "$ENGINE_CONF" ] && command grep -q 'include /etc/nginx/user/\*\.conf;' "$ENGINE_CONF"; then
+    ENGINE_CONF_BAK="${ENGINE_CONF}.pre-update-$(date -u +%Y%m%dT%H%M%SZ)"
+    ENGINE_CONF_REPAIRED="${ENGINE_CONF}.repair"
+    # Rewritten in place rather than replaced, so the file keeps its owner and mode: a
+    # rename would hand nginx a root-owned 0600 file with no explanation of where the
+    # original went. The image or a host without sed -i then behaves identically.
+    if cp -p "$ENGINE_CONF" "$ENGINE_CONF_BAK" 2>/dev/null \
+        && command grep -v 'include /etc/nginx/user/\*\.conf;' "$ENGINE_CONF" > "$ENGINE_CONF_REPAIRED" 2>/dev/null \
+        && cat "$ENGINE_CONF_REPAIRED" > "$ENGINE_CONF" 2>/dev/null \
+        && "${COMPOSE_CMD[@]}" exec -T lynxwaf-openresty nginx -t >/dev/null 2>&1; then
+        rm -f "$ENGINE_CONF_REPAIRED"
+        log_success "Removed the http-level /etc/nginx/user/*.conf include; the engine validates the result."
+        log_info "Previous engine configuration kept at ${ENGINE_CONF_BAK}"
+    else
+        rm -f "$ENGINE_CONF_REPAIRED"
+        if [ -f "$ENGINE_CONF_BAK" ]; then
+            cp -p "$ENGINE_CONF_BAK" "$ENGINE_CONF" 2>/dev/null || true
+        fi
+        log_warn "The engine configuration still includes /etc/nginx/user/*.conf at http level,"
+        log_warn "and either it could not be repaired or removing it did not validate."
+        log_warn "The previous file was kept. See what the engine reports:"
+        log_warn "  ${COMPOSE_CMD[*]} exec lynxwaf-openresty nginx -t"
+        log_warn "Then remove that one line and reload:"
+        log_warn "  sed -i '/include \\/etc\\/nginx\\/user\\/\\*\\.conf;/d' ${ENGINE_CONF}"
+        log_warn "  ${COMPOSE_CMD[*]} exec lynxwaf-openresty nginx -s reload"
+    fi
+fi
+
 # The two images have to move together. A new control plane paired with an engine that
 # predates the data-plane supervisor is a stack where every configuration change is
 # written, saved, reported as successful, and never applied - and nothing on the console
@@ -545,13 +590,23 @@ else
 fi
 
 COUNTER_MIRROR="data/nginx/conf.d/waf/data/lynxwaf_global_status.json"
+# The mirror survives a recreate: it is a file on the host, so its presence proves nothing.
+# What this update has to prove is that the engine still writes it afterwards, and the only
+# evidence of that is an mtime at or after the moment the update started.
+mirror_epoch() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
+update_started="$(date +%s)"
 waited=0
-while [ ! -f "$COUNTER_MIRROR" ] && [ "$waited" -lt 30 ]; do
+while [ "$waited" -lt 30 ]; do
+    [ -f "$COUNTER_MIRROR" ] && [ "$(mirror_epoch "$COUNTER_MIRROR")" -ge "$update_started" ] && break
     sleep 1
     waited=$((waited + 1))
 done
-if [ -f "$COUNTER_MIRROR" ]; then
-    log_success "Traffic counters are being exported to the console."
+if [ -f "$COUNTER_MIRROR" ] && [ "$(mirror_epoch "$COUNTER_MIRROR")" -ge "$update_started" ]; then
+    log_success "Counter mirror is being written by the updated engine ($(( $(date +%s) - $(mirror_epoch "$COUNTER_MIRROR") ))s old)."
+elif [ -f "$COUNTER_MIRROR" ]; then
+    log_warn "The counter mirror has not been rewritten since this update began ($(( $(date +%s) - $(mirror_epoch "$COUNTER_MIRROR") ))s old, waited ${waited}s)."
+    log_warn "Requests are proxied but no longer recorded. The engine names the reason in its error log:"
+    log_warn "  tail -n 20 ${SCRIPT_DIR}/data/nginx/logs/error.log"
 else
     log_warn "No traffic counter mirror after ${waited}s — requests are proxied but never recorded."
     log_warn "The engine names the reason in its own error log: tail -n 20 ${SCRIPT_DIR}/data/nginx/logs/error.log"

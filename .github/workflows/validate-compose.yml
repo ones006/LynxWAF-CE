@@ -67,6 +67,9 @@ jobs:
           bash -n update.sh
           bash -n uninstall.sh
           bash -n test_poc_simulation.sh
+          # A host that cannot reach GHCR installs from an archive; the flag has to keep
+          # existing even if nobody uses it on a connected host.
+          bash install.sh --help | grep -q -- '--offline'
 
       # Walks the updater through preflight, self-sync, snapshot and the dry-run
       # exit using a throwaway install tree and a stubbed docker CLI, so a
@@ -107,3 +110,56 @@ jobs:
             echo "--offline without an archive must fail, not fall back to the registry" >&2
             exit 1
           fi
+
+      # The engine http block used to include /etc/nginx/user/*.conf. Those are per-site
+      # snippets, and every vhost already includes its own inside its server block; at
+      # http level a snippet that sets client_max_body_size duplicates the one the block
+      # sets, nginx refuses the whole configuration, and the supervisor keeps serving
+      # the boot-time config while every reload is rejected. That is how imported sites
+      # ended up written, reported as saved, and unreachable. The real engine image is
+      # the oracle here: the shipped template must validate with such a snippet, and
+      # re-inserting the http-level glob into the same run must fail.
+      - name: Engine configuration must reject the http-level site include
+        run: |
+          set -eo pipefail
+          ! grep -q 'include /etc/nginx/user/\*\.conf;' install.sh scripts/nginx.conf
+
+          work="$RUNNER_TEMP/engine-conf"
+          mkdir -p "$work/main" "$work/etc/conf.d" "$work/etc/vhost" "$work/etc/user"
+          # The main config lives outside the included directory, as it does on a host,
+          # so the include globs cannot match the file that contains them.
+          sed 's#/etc/nginx/#/etc/nginx-test/#g' scripts/nginx.conf > "$work/main/nginx.conf"
+          cp scripts/mime.types "$work/main/mime.types"
+          printf 'client_max_body_size 50m;\nadd_header X-Site "one";\n' > "$work/etc/user/site.test.conf"
+          cat > "$work/etc/vhost/site.test.conf" <<'CONF'
+          server {
+              listen 18080;
+              server_name site.test;
+              location / { return 200 'ok'; }
+              include /etc/nginx-test/user/site.test.conf;
+          }
+          CONF
+
+          image=ghcr.io/ones006/lynxwaf-openresty:ce-latest
+          docker pull -q "$image" >/dev/null
+          engine_test() {
+            docker run --rm --user 0:0 \
+              -v "$work/main:/etc/nginx-main:ro" \
+              -v "$work/etc:/etc/nginx-test:ro" \
+              --entrypoint /opt/lynxwaf/openresty/nginx/sbin/nginx \
+              "$image" -t -p /opt/lynxwaf/openresty/nginx -c "/etc/nginx-main/$1" 2>&1
+          }
+          engine_test nginx.conf > "$work/positive.log"
+          grep -q 'test is successful' "$work/positive.log"
+
+          sed 's#^    include /etc/nginx-test/vhost/\*\.conf;#&\n    include /etc/nginx-test/user/*.conf;#' \
+            "$work/main/nginx.conf" > "$work/main/nginx-negative.conf"
+          grep -q 'include /etc/nginx-test/user/\*\.conf;' "$work/main/nginx-negative.conf"
+          status=0
+          output="$(engine_test nginx-negative.conf)" || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "the http-level site include validated - the duplicate guard is gone" >&2
+            echo "$output" >&2
+            exit 1
+          fi
+          echo "$output" | grep -q 'directive is duplicate'

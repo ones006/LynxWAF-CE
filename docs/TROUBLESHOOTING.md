@@ -348,6 +348,17 @@ of the updater: snapshot, backup, recreate and validation. It refuses to continu
 archive does not carry the exact tags `.env` asks for, because compose would otherwise
 recreate from whatever older image happened to be local and report success.
 
+A first install on the same blocked path uses the same archive:
+
+```bash
+cd /opt/lynxwaf && sudo bash install.sh --offline
+```
+
+`install.sh --offline` also loads `./offline/*.tar` (or `--offline=/path/to.tar`) and
+verifies that both images named in `.env` are present before it starts anything. A missing
+tag fails the install rather than sending compose back to the registry, so the archive has
+to be saved from the same tags the host expects.
+
 Two things are worth checking afterwards, because an offline host is exactly the case where
 a stale cached image can be reused without complaint:
 
@@ -358,6 +369,39 @@ docker top lynxwaf-openresty | head -3   # PID 1 must be lynxwaf-engine.sh, not 
 
 If the supervisor is missing, the engine predates the reload channel: the console will save
 configuration changes and nothing will apply them.
+
+### I. Every Reload Is Refused (`directive is duplicate`)
+
+Sites appear in the console, their vhost files exist under `data/nginx/conf.d/vhost/`, but
+`https://` does not connect at all and `http://` still answers with the default welcome page.
+The engine log repeats the same verdict every two seconds:
+
+```bash
+docker logs lynxwaf-openresty 2>&1 | tail -20
+# nginx: [emerg] "client_max_body_size" directive is duplicate in /etc/nginx/user/<site>.conf:14
+# lynxwaf: refused reload, the generated configuration does not validate
+```
+
+Each site vhost includes its own operator snippet (`/etc/nginx/user/<site_id>.conf`) inside
+its server block. Older installs additionally included the whole `user/` directory in the
+engine's `http` block, where a snippet setting `client_max_body_size` duplicates the one
+already defined there — and nginx refuses the entire configuration, so the engine keeps
+serving the one it booted with and no site ever appears. The same glob also applied one
+site's `add_header` (for example its Content-Security-Policy) to every other site.
+
+Remove the http-level include once, then reload:
+
+```bash
+sudo sed -i '/include \/etc\/nginx\/user\/\*\.conf;/d' /opt/lynxwaf/data/nginx/conf/nginx.conf
+sudo docker exec lynxwaf-openresty nginx -t
+sudo docker exec lynxwaf-openresty nginx -s reload
+```
+
+`nginx -t` must print `syntax is ok` and `test is successful`; the reload then binds 443 and
+the pending sites serve immediately. `install.sh` no longer writes that line, and `update.sh`
+repairs a host that still carries it: it keeps a timestamped copy beside the file, removes the
+line, and runs `nginx -t` inside the engine, restoring the copy if the result does not
+validate. Run the manual commands above only when the updater reports that it could not.
 
 ---
 
