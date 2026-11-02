@@ -13,8 +13,8 @@
 #                    way back to the image that was running)
 #   4. Backup      : tar ./config and ./data/nginx (small, and the first things
 #                    to break across a version step)
-#   5. Pull        : fetch the tags referenced by .env, or with --offline load them
-#                    from a docker-save archive when the registry is unreachable
+#   5. Pull        : fetch the tags referenced by .env, fall back to the mirror channel
+#                    when GHCR never answers, or load a --offline docker-save archive
 #   6. Recreate    : up -d, forced when the compose file changed this run
 #   7. Validate    : container state, crash-loop detection, console port, the
 #                    .ver actually running, and the licensed root-domain quota
@@ -28,6 +28,9 @@
 #   sudo bash update.sh --db-backup     # also mysqldump lynxwaf_db (can be large)
 #   sudo bash update.sh --offline       # load images from ./offline/*.tar, skip the registry
 #   sudo bash update.sh --offline=/tmp/lynxwaf-ce-26.10.29.2-amd64.tar
+#   sudo bash update.sh --mirror docker.io/oneslynx   # namespace to fall back to when
+#                                      GHCR never answers (default: docker.io/oneslynx)
+#   sudo bash update.sh --no-mirror    # never point .env at another registry; fail instead
 #
 # Exit codes: 0 updated or already current, 1 failure, 2 invalid usage.
 # ==============================================================================
@@ -57,6 +60,7 @@ KEEP_COMPOSE=false
 COMPOSE_CHANGED=false
 OFFLINE=false
 OFFLINE_IMAGE_TAR=""
+MIRROR_FALLBACK=true
 
 log_info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[ OK ]${NC} $*"; }
@@ -84,8 +88,11 @@ while [ $# -gt 0 ]; do
         --keep-compose) KEEP_COMPOSE=true; shift ;;
         --offline)      OFFLINE=true; shift ;;
         --offline=*)    OFFLINE=true; OFFLINE_IMAGE_TAR="${1#*=}"; shift ;;
+        --mirror)       [ $# -ge 2 ] || die "--mirror needs a namespace, e.g. --mirror docker.io/oneslynx"
+                        MIRROR_NAMESPACE="$2"; shift 2 ;;
+        --no-mirror)    MIRROR_FALLBACK=false; shift ;;
         --help|-h)
-            sed -n '2,32p' "${BASH_SOURCE[0]}"
+            sed -n '2,35p' "${BASH_SOURCE[0]}"
             exit 0
             ;;
         *) usage_error "Unknown option '$1' (see --help)" ;;
@@ -282,6 +289,101 @@ image_digest() {
     docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null || true
 }
 
+# BEGIN IMAGE-FALLBACK — keep this block byte-identical in install.sh and update.sh;
+# validate-compose.yml diffs the two copies, because an update that behaves differently
+# from the install it followed is exactly the kind of surprise nobody reproduces.
+#
+# Why a mirror is a fix rather than a workaround: this stack already pulls mysql:8.0 and
+# redis:7-alpine from Docker Hub on every ordinary compose pull, so a second channel
+# there asks the host to contact a registry it already contacts. Why it triggers only on
+# network-class errors: GHCR answers "denied" both for a repository it will not show you
+# and for a tag that was never published, so a publisher bug is indistinguishable from a
+# block at this end, and falling back on "denied" would hide a broken release behind a
+# mirror that happens to still hold the previous bytes. A handshake timeout is not
+# ambiguous — the request never got an answer.
+# The block sits before argument parsing in install.sh and after it in update.sh, so the
+# assignment must keep any value the caller already gave: neither order may let the
+# default clobber an explicit --mirror.
+MIRROR_NAMESPACE="${MIRROR_NAMESPACE:-${LYNXWAF_MIRROR_NAMESPACE:-docker.io/oneslynx}}"
+
+mirror_ref_for() {
+    # mirror_ref_for <ref> — the same name and tag under the mirror namespace. A pinned
+    # ref keeps its pin, so this never moves an operator off a version they chose.
+    local tail="${1##*/}"
+    printf '%s/%s' "$MIRROR_NAMESPACE" "$tail"
+}
+
+mirror_fallback_needed() {
+    # mirror_fallback_needed <pull-error-file>
+    command grep -qi 'TLS handshake timeout\|i/o timeout\|no such host\|connection refused\|dial tcp' "$1" 2>/dev/null
+}
+
+mirror_point_env_at() {
+    # mirror_point_env_at <env-file> KEY=value [KEY=value ...]
+    # Written through a temp file and copied back into the original, so the inode, the
+    # 0600 mode and every secret on the other lines stay exactly as they were.
+    local file="$1"
+    shift
+    local kv key tmp
+    [ -f "$file" ] || return 1
+    cp -p "$file" "${file}.pre-mirror.bak" 2>/dev/null || true
+    chmod 600 "${file}.pre-mirror.bak" 2>/dev/null || true
+    tmp="$(mktemp)" || return 1
+    cp "$file" "$tmp" || { rm -f "$tmp"; return 1; }
+    for kv in "$@"; do
+        key="${kv%%=*}"
+        if command grep -qE "^${key}=" "$tmp"; then
+            if ! sed -E "s|^${key}=.*|${kv}|" "$tmp" > "${tmp}.2"; then
+                rm -f "$tmp" "${tmp}.2"
+                return 1
+            fi
+            mv "${tmp}.2" "$tmp"
+        else
+            printf '%s\n' "$kv" >> "$tmp"
+        fi
+    done
+    cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    chmod 600 "$file" 2>/dev/null || true
+}
+
+fallback_images_to_mirror() {
+    # fallback_images_to_mirror <env-file> <daemon-ref> <openresty-ref>
+    # 0 only when every ref the stack names is present locally AND .env now points at the
+    # mirror. The original name is tagged from the mirror copy too, so anything in this
+    # same run that still reads it — snapshot, pre-flight, rollback advice — gets those
+    # identical bytes instead of an error, without pulling twice.
+    local env_file="$1" daemon_ref="$2" engine_ref="$3"
+    local keys=("LYNXWAF_DAEMON_IMAGE" "LYNXWAF_OPENRESTY_IMAGE")
+    local refs=("$daemon_ref" "$engine_ref")
+    local pairs="" i ref mref
+    log_info "GHCR did not answer; trying the mirror channel at ${MIRROR_NAMESPACE}..."
+    for i in 0 1; do
+        ref="${refs[$i]}"
+        [ -n "$ref" ] || continue
+        mref="$(mirror_ref_for "$ref")"
+        if ! docker pull --quiet "$mref" >/dev/null 2>&1; then
+            log_warn "  ${mref} is not on the mirror — it probably predates the mirror channel."
+            log_warn "  Pin a current tag, or keep this host on a saved archive (--offline)."
+            return 1
+        fi
+        log_info "  pulled ${mref}"
+        docker tag "$mref" "$ref" 2>/dev/null || true
+        pairs="${pairs:+${pairs} }${keys[$i]}=${mref}"
+    done
+    [ -n "$pairs" ] || return 1
+    # split on purpose: one KEY=value pair per argument, and none of them contain spaces
+    # shellcheck disable=SC2086
+    if ! mirror_point_env_at "$env_file" $pairs; then
+        log_warn "  The images are local but ${env_file} could not be rewritten; nothing was pointed at the mirror."
+        return 1
+    fi
+    log_warn "  ${env_file} now pulls from the mirror. To go back to GHCR:"
+    log_warn "    cp ${env_file}.pre-mirror.bak ${env_file} && chmod 600 ${env_file}"
+    return 0
+}
+# END IMAGE-FALLBACK
+
 {
     echo "# LynxWAF CE pre-update snapshot — ${TS}"
     echo "# daemon_image=${DAEMON_IMAGE}"
@@ -453,13 +555,39 @@ if [ "$pulled" != true ]; then
     # path problem, not a registry problem: the daemon's proxy settings or a link that
     # cannot carry a full ClientHello. Say so, because "retry later" sends operators
     # after a fault that will never heal on its own.
-    if command grep -qi 'TLS handshake timeout\|i/o timeout\|no such host\|connection refused' "$PULL_ERR"; then
+    if command grep -qi 'denied\|unauthorized' "$PULL_ERR" 2>/dev/null; then
+        # The registry answered. Something about this name is wrong: the tag was never
+        # published under it, or the repository stopped being public. The mirror channel
+        # carries the same bytes under a different namespace, so an operator can compare
+        # the two instead of re-reading the network stack for an hour.
+        log_warn "The registry answered and refused: the tag above was probably never published"
+        log_warn "under that name, or the repository is not public. Pin a tag that exists, or move"
+        log_warn "to the mirror channel in .env:"
+        log_warn "  LYNXWAF_DAEMON_IMAGE=docker.io/oneslynx/lynxwaf-daemon:ce-latest"
+        log_warn "  LYNXWAF_OPENRESTY_IMAGE=docker.io/oneslynx/lynxwaf-openresty:ce-latest"
+    elif mirror_fallback_needed "$PULL_ERR"; then
         log_warn "The failure is at the network layer, not the registry. Check the daemon's own"
         log_warn "proxy environment (systemctl show docker -p Environment; cat /etc/docker/daemon.json)"
         log_warn "and whether this link carries a full TLS packet (ping -M do -s 1452 \$(getent ahostsv4 ghcr.io | awk '{print \$1; exit}'))."
+        log_warn "If GHCR stays unreachable from this host, the same bytes are on the mirror channel"
+        log_warn "(docker.io/oneslynx/... in .env), or update without a registry:"
+        log_warn "  sudo bash update.sh --offline=/path/to/lynxwaf-ce-kit.tar"
+    fi
+    # The mirror is for exactly this host: a path that never answers GHCR, where four
+    # retries and every diagnostic above are wasted. Asking Docker Hub is not a new
+    # dependency - compose already pulls mysql:8.0 and redis:7-alpine from there - and it
+    # is attempted only on network-class failures, so a missing tag still surfaces as one.
+    # .env is rewritten to the mirror refs; DAEMON_IMAGE/OPENRESTY_IMAGE keep the original
+    # names for the rest of this run, and both resolve because the copy is tagged locally.
+    if [ "$MIRROR_FALLBACK" = true ] && mirror_fallback_needed "$PULL_ERR" \
+        && fallback_images_to_mirror "./.env" "$DAEMON_IMAGE" "$OPENRESTY_IMAGE"; then
+        log_warn "Continuing this update on the mirror channel. The stack was not left half-updated."
+        pulled=true
     fi
     rm -f "$PULL_ERR" "$PULL_ERR_NEW"
-    die "Retry once the registry is reachable: ${COMPOSE_CMD[*]} pull"
+    if [ "$pulled" != true ]; then
+        die "Retry once the registry is reachable: ${COMPOSE_CMD[*]} pull"
+    fi
 fi
 rm -f "$PULL_ERR" "$PULL_ERR_NEW"
 fi

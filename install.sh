@@ -32,6 +32,7 @@ WAF_PORT="${DEFAULT_PORT}"
 NON_INTERACTIVE=false
 OFFLINE=false
 OFFLINE_IMAGE_TAR=""
+MIRROR_FALLBACK=true
 
 # Ensure valid working directory (in case caller was standing in a deleted folder)
 if ! pwd >/dev/null 2>&1; then
@@ -46,13 +47,13 @@ fi
 print_banner() {
     echo -e "${CYAN}${BOLD}"
     cat << "EOF"
-  _                                     __          __     ______ 
- | |                                    \ \        / /\   |  ____|
- | |     _   _ _ __ __  ____      ____ _ \ \  /\  / /  \  | |__   
- | |    | | | | '_ \\ \/ /\ \ /\ / / _` | \ \/  \/ / /\ \ |  __|  
- | |____| |_| | | | |>  <  \ V  V / (_| |  \  /\  / ____ \| |     
- |______|\__, |_| |_/_/\_\  \_/\_/ \__,_|   \/  \/_/    \_\_|     
-          __/ |                                                   
+  _                      __          __     ______ 
+ | |                     \ \        / /\   |  ____|
+ | |     _   _ _ __ __  __\ \  /\  / /  \  | |__   
+ | |    | | | | '_ \\ \/ / \ \/  \/ / /\ \ |  __|  
+ | |____| |_| | | | |>  <   \  /\  / ____ \| |     
+ |______|\__, |_| |_/_/\_\   \/  \/_/    \_\_|     
+          __/ |                                      
          |___/      COMMUNITY EDITION (FREE & UNENCUMBERED)       
 EOF
     echo -e "${NC}"
@@ -77,6 +78,101 @@ log_warn() {
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# BEGIN IMAGE-FALLBACK — keep this block byte-identical in install.sh and update.sh;
+# validate-compose.yml diffs the two copies, because an update that behaves differently
+# from the install it followed is exactly the kind of surprise nobody reproduces.
+#
+# Why a mirror is a fix rather than a workaround: this stack already pulls mysql:8.0 and
+# redis:7-alpine from Docker Hub on every ordinary compose pull, so a second channel
+# there asks the host to contact a registry it already contacts. Why it triggers only on
+# network-class errors: GHCR answers "denied" both for a repository it will not show you
+# and for a tag that was never published, so a publisher bug is indistinguishable from a
+# block at this end, and falling back on "denied" would hide a broken release behind a
+# mirror that happens to still hold the previous bytes. A handshake timeout is not
+# ambiguous — the request never got an answer.
+# The block sits before argument parsing in install.sh and after it in update.sh, so the
+# assignment must keep any value the caller already gave: neither order may let the
+# default clobber an explicit --mirror.
+MIRROR_NAMESPACE="${MIRROR_NAMESPACE:-${LYNXWAF_MIRROR_NAMESPACE:-docker.io/oneslynx}}"
+
+mirror_ref_for() {
+    # mirror_ref_for <ref> — the same name and tag under the mirror namespace. A pinned
+    # ref keeps its pin, so this never moves an operator off a version they chose.
+    local tail="${1##*/}"
+    printf '%s/%s' "$MIRROR_NAMESPACE" "$tail"
+}
+
+mirror_fallback_needed() {
+    # mirror_fallback_needed <pull-error-file>
+    command grep -qi 'TLS handshake timeout\|i/o timeout\|no such host\|connection refused\|dial tcp' "$1" 2>/dev/null
+}
+
+mirror_point_env_at() {
+    # mirror_point_env_at <env-file> KEY=value [KEY=value ...]
+    # Written through a temp file and copied back into the original, so the inode, the
+    # 0600 mode and every secret on the other lines stay exactly as they were.
+    local file="$1"
+    shift
+    local kv key tmp
+    [ -f "$file" ] || return 1
+    cp -p "$file" "${file}.pre-mirror.bak" 2>/dev/null || true
+    chmod 600 "${file}.pre-mirror.bak" 2>/dev/null || true
+    tmp="$(mktemp)" || return 1
+    cp "$file" "$tmp" || { rm -f "$tmp"; return 1; }
+    for kv in "$@"; do
+        key="${kv%%=*}"
+        if command grep -qE "^${key}=" "$tmp"; then
+            if ! sed -E "s|^${key}=.*|${kv}|" "$tmp" > "${tmp}.2"; then
+                rm -f "$tmp" "${tmp}.2"
+                return 1
+            fi
+            mv "${tmp}.2" "$tmp"
+        else
+            printf '%s\n' "$kv" >> "$tmp"
+        fi
+    done
+    cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
+    rm -f "$tmp"
+    chmod 600 "$file" 2>/dev/null || true
+}
+
+fallback_images_to_mirror() {
+    # fallback_images_to_mirror <env-file> <daemon-ref> <openresty-ref>
+    # 0 only when every ref the stack names is present locally AND .env now points at the
+    # mirror. The original name is tagged from the mirror copy too, so anything in this
+    # same run that still reads it — snapshot, pre-flight, rollback advice — gets those
+    # identical bytes instead of an error, without pulling twice.
+    local env_file="$1" daemon_ref="$2" engine_ref="$3"
+    local keys=("LYNXWAF_DAEMON_IMAGE" "LYNXWAF_OPENRESTY_IMAGE")
+    local refs=("$daemon_ref" "$engine_ref")
+    local pairs="" i ref mref
+    log_info "GHCR did not answer; trying the mirror channel at ${MIRROR_NAMESPACE}..."
+    for i in 0 1; do
+        ref="${refs[$i]}"
+        [ -n "$ref" ] || continue
+        mref="$(mirror_ref_for "$ref")"
+        if ! docker pull --quiet "$mref" >/dev/null 2>&1; then
+            log_warn "  ${mref} is not on the mirror — it probably predates the mirror channel."
+            log_warn "  Pin a current tag, or keep this host on a saved archive (--offline)."
+            return 1
+        fi
+        log_info "  pulled ${mref}"
+        docker tag "$mref" "$ref" 2>/dev/null || true
+        pairs="${pairs:+${pairs} }${keys[$i]}=${mref}"
+    done
+    [ -n "$pairs" ] || return 1
+    # split on purpose: one KEY=value pair per argument, and none of them contain spaces
+    # shellcheck disable=SC2086
+    if ! mirror_point_env_at "$env_file" $pairs; then
+        log_warn "  The images are local but ${env_file} could not be rewritten; nothing was pointed at the mirror."
+        return 1
+    fi
+    log_warn "  ${env_file} now pulls from the mirror. To go back to GHCR:"
+    log_warn "    cp ${env_file}.pre-mirror.bak ${env_file} && chmod 600 ${env_file}"
+    return 0
+}
+# END IMAGE-FALLBACK
 
 # Keep the helper scripts current. Fetching them only when missing used to strand
 # existing installs on an old updater, so fixes never reached the field.
@@ -141,6 +237,15 @@ while [[ $# -gt 0 ]]; do
             OFFLINE_IMAGE_TAR="${1#*=}"
             shift
             ;;
+        --mirror)
+            [ $# -ge 2 ] || { log_error "--mirror needs a namespace, e.g. --mirror docker.io/oneslynx"; exit 1; }
+            MIRROR_NAMESPACE="$2"
+            shift 2
+            ;;
+        --no-mirror)
+            MIRROR_FALLBACK=false
+            shift
+            ;;
         -h|--help)
             echo "Usage: bash install.sh [options]"
             echo ""
@@ -150,6 +255,10 @@ while [[ $# -gt 0 ]]; do
             echo "  -y, --yes          Non-interactive mode (auto-accept defaults)"
             echo "  --offline[=<tar>]  Load images from a 'docker save' archive instead of GHCR"
             echo "                     (default archive: <dir>/offline/*.tar)"
+            echo "  --mirror <ns>      Namespace to fall back to when GHCR never answers"
+            echo "                     (default: docker.io/oneslynx)"
+            echo "  --no-mirror        Never fall back: fail the way --offline would, instead"
+            echo "                     of pointing .env at another registry"
             echo "  -h, --help         Show this help message"
             exit 0
             ;;
@@ -496,7 +605,31 @@ start_stack() {
         done
         if [ "$pulled" != true ]; then
             tail -n 3 "$PULL_ERR" >&2 || true
+            # Two failures look alike from here. "denied"/"unauthorized" means the request
+            # reached the registry and got an answer: the tag does not exist or the
+            # repository is not public, and no network fix will change that. A handshake
+            # timeout means the request never got an answer at all. Calling both of them
+            # "GHCR unreachable" sends operators down the wrong road for an hour, and a
+            # publisher that pushes the wrong tag sees its own release as a client bug.
+            if command grep -qi 'denied\|unauthorized' "$PULL_ERR" 2>/dev/null; then
+                log_warn "The registry answered and refused. The tag in .env may not have been"
+                log_warn "published under that name, or the repository is not public."
+            elif mirror_fallback_needed "$PULL_ERR"; then
+                log_warn "The request never reached the registry: a path problem (proxy, DNS, or a"
+                log_warn "link that cannot carry the handshake), not a registry problem."
+            fi
+            # The mirror is for this host: a path that never answers GHCR, where four
+            # retries buy nothing. It is not a new dependency - compose pulls mysql:8.0 and
+            # redis:7-alpine from Docker Hub on every ordinary install - and it is attempted
+            # only for network-class failures, so a tag that was never published still reads
+            # as a publishing problem instead of being papered over by a working mirror.
+            if [ "$MIRROR_FALLBACK" = true ] && mirror_fallback_needed "$PULL_ERR" \
+                && fallback_images_to_mirror "$INSTALL_DIR/.env" "$daemon_img" "$engine_img"; then
+                pulled=true
+            fi
             rm -f "$PULL_ERR"
+        fi
+        if [ "$pulled" != true ]; then
             if docker image inspect "$daemon_img" >/dev/null 2>&1 \
                 && docker image inspect "$engine_img" >/dev/null 2>&1; then
                 log_warn "GHCR was unreachable, but both LynxWAF images are already on this host: continuing on them."
@@ -504,6 +637,9 @@ start_stack() {
             else
                 log_error "Could not fetch the LynxWAF images and no usable copy is cached locally. Aborting."
                 log_error "If this host cannot reach GHCR, install from a saved archive: sudo bash install.sh --offline=/path/to.tar"
+                log_error "Or pull the identical bytes from the mirror channel: set in $INSTALL_DIR/.env"
+                log_error "  LYNXWAF_DAEMON_IMAGE=docker.io/oneslynx/lynxwaf-daemon:ce-latest"
+                log_error "  LYNXWAF_OPENRESTY_IMAGE=docker.io/oneslynx/lynxwaf-openresty:ce-latest"
                 log_error "Check reachability from this host: curl -sSI https://ghcr.io/v2/ | head -1"
                 exit 1
             fi

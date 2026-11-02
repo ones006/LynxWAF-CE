@@ -345,7 +345,7 @@ docker logs lynxwaf-openresty 2>&1 | grep -i 'refused reload'
 A stale first data point is normal: the console stores a per-minute delta, so the initial
 sample is only a baseline. Give it two minutes after the mirror starts moving.
 
-### H. The Update Cannot Reach GHCR (Offline Update)
+### H. The Update Cannot Reach GHCR (Mirror or Offline Update)
 
 `docker compose pull` fails with `net/http: TLS handshake timeout` while this still
 succeeds:
@@ -371,8 +371,56 @@ does not:
 systemctl show docker -p Environment; cat /etc/docker/daemon.json 2>/dev/null
 ```
 
-If a proxy exists, pointing the daemon at it is the permanent fix. If there is none, update
-from an image archive. On any machine that can reach GHCR:
+Read the exact words before blaming the path, because two different failures look alike in
+this command's output and one of them has no network cause at all:
+
+- `net/http: TLS handshake timeout` — the request never reached the registry. Path, proxy
+  or MTU. Everything below applies.
+- `denied` / `unauthorized` on a `Head .../manifests/<tag>` — the registry *answered*. GHCR
+  does not distinguish "this tag does not exist" from "this repository is private" to an
+  anonymous client: both come back as `denied`. So a publisher that pushed the wrong tag
+  produces the same sentence as a blocked firewall, and no amount of `ping`, `daemon.json`
+  or certificate work will change it. Confirm the tag exists by asking a machine that can
+  reach GHCR (`docker buildx imagetools inspect ghcr.io/ones006/lynxwaf-daemon:ce-latest`)
+  before touching the network.
+
+If a proxy exists, pointing the daemon at it is the permanent fix. If the path to GHCR
+simply does not work from this network, the cheapest way back to a live update is the
+mirror channel: the same images, copied by manifest rather than rebuilt, are published on
+Docker Hub, and an anonymous pull from there needs no login.
+
+Both installers switch to it on their own, after the retries, when the pull error says the
+registry never answered: `install.sh` and `update.sh` pull `docker.io/oneslynx/...`, tag
+those identical bytes under the GHCR name as well so the rest of the run reads them, and
+rewrite the two `LYNXWAF_*_IMAGE` keys in `.env` — no other line, mode 600 kept, the
+previous file saved as `.env.pre-mirror.bak`. The command that puts it back is printed at
+the time. A `denied` is never treated this way: that error means the registry answered, and
+falling back there would cover a tag that was never published with a mirror still holding
+the older bytes. To keep the failure visible instead of routed around it:
+
+```bash
+sudo bash update.sh --no-mirror
+```
+
+To choose a namespace of your own rather than the published one, `--mirror
+docker.io/yourname`. If the mirror does not carry the tag either, the fallback stops before
+touching `.env` and the updater ends the way it used to.
+
+The manual version of the same switch, if you would rather set it before the pull than
+after:
+
+```bash
+# in /opt/lynxwaf/.env
+LYNXWAF_DAEMON_IMAGE=docker.io/oneslynx/lynxwaf-daemon:ce-latest
+LYNXWAF_OPENRESTY_IMAGE=docker.io/oneslynx/lynxwaf-openresty:ce-latest
+```
+
+Those two refs are verified against GHCR at release time by manifest digest, per platform,
+so switching them changes the route and not the bytes. Docker Hub does rate-limit anonymous
+pulls per IP, which an `update.sh` occasionally running will not reach; a fleet pulling
+many times a day should either pin a version tag or use the archive below.
+
+If there is no mirror reachable either, update from an image archive. On any machine that can reach GHCR:
 
 ```bash
 docker pull ghcr.io/ones006/lynxwaf-daemon:ce-latest

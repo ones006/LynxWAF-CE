@@ -228,3 +228,84 @@ jobs:
           grep -q 'deliberately writes no firewall rule' "$RUNNER_TEMP/posture.out"
           echo "report on a bare host:"
           sed 's/^/  /' "$RUNNER_TEMP/posture.out"
+
+      # The mirror fallback is the one place an installer rewrites the file holding the
+      # operator's secrets, and, like the exposure report, it is defined twice because the
+      # two scripts cannot source each other. So the contract is both text and behaviour:
+      # the copies may not drift, the trigger may not widen to an error the registry
+      # actually answered, and running it may move only the two image keys - never a
+      # password, never the file mode, and nothing at all when a pull fails.
+      - name: Mirror fallback stays in sync, network-class only and non-destructive
+        run: |
+          set -eo pipefail
+          sed -n '/^# BEGIN IMAGE-FALLBACK/,/^# END IMAGE-FALLBACK/p' install.sh > "$RUNNER_TEMP/fb.install"
+          sed -n '/^# BEGIN IMAGE-FALLBACK/,/^# END IMAGE-FALLBACK/p' update.sh > "$RUNNER_TEMP/fb.update"
+          test -s "$RUNNER_TEMP/fb.install"
+          if ! cmp -s "$RUNNER_TEMP/fb.install" "$RUNNER_TEMP/fb.update"; then
+            echo "the two copies of the image-fallback block have drifted" >&2
+            diff "$RUNNER_TEMP/fb.install" "$RUNNER_TEMP/fb.update" >&2 || true
+            exit 1
+          fi
+
+          # Each caller has to gate on the flag AND on the shared classifier. A script that
+          # greps the pull error itself is a second copy of the trigger rule, and the second
+          # copy is the one that quietly stops matching when the first is widened.
+          for f in install.sh update.sh; do
+            grep -q 'MIRROR_FALLBACK" = true ] && mirror_fallback_needed "$PULL_ERR"' "$f" \
+              || { echo "$f does not gate the fallback through mirror_fallback_needed" >&2; exit 1; }
+          done
+
+          # GHCR answers "denied" both for a repository it will not show and for a tag that
+          # was never published, so a fallback on that error would hide a broken release
+          # behind a mirror still holding the previous bytes. Network-class only.
+          sed -n '/^mirror_fallback_needed() {/,/^}/p' "$RUNNER_TEMP/fb.install" > "$RUNNER_TEMP/fb.needed"
+          test -s "$RUNNER_TEMP/fb.needed"
+          grep -q 'TLS handshake timeout' "$RUNNER_TEMP/fb.needed"
+          if grep -qi 'denied\|unauthorized' "$RUNNER_TEMP/fb.needed"; then
+            echo "the fallback triggers on an answer from the registry; it is a network-class fallback" >&2
+            exit 1
+          fi
+
+          # Behaviour with a docker that only ever answers the mirror, and a .env holding
+          # two real-looking secrets at 0600.
+          mkdir -p "$RUNNER_TEMP/stub-ok" "$RUNNER_TEMP/stub-down"
+          printf '#!/bin/sh\ncase "$1" in\n  pull) case "$3" in docker.io/*) exit 0 ;; *) exit 1 ;; esac ;;\n  *) exit 0 ;;\nesac\n' \
+            > "$RUNNER_TEMP/stub-ok/docker"
+          printf '#!/bin/sh\nexit 1\n' > "$RUNNER_TEMP/stub-down/docker"
+          chmod +x "$RUNNER_TEMP/stub-ok/docker" "$RUNNER_TEMP/stub-down/docker"
+
+          work="$(mktemp -d)"
+          printf 'LYNXWAF_DAEMON_IMAGE=ghcr.io/ones006/lynxwaf-daemon:ce-latest\nLYNXWAF_OPENRESTY_IMAGE=ghcr.io/ones006/lynxwaf-openresty:ce-latest\nMYSQL_ROOT_PASSWORD=ci-only-mysql-secret\nINITIAL_ADMIN_PASSWORD=ci-only-admin-secret\n' > "$work/.env"
+          chmod 600 "$work/.env"
+          cp -p "$work/.env" "$work/.env.orig"
+          fb='set -eo pipefail
+              log_info() { echo "[INFO] $*"; }
+              log_warn() { echo "[WARN] $*"; }
+              . "$1"
+              fallback_images_to_mirror "$2/.env" ghcr.io/ones006/lynxwaf-daemon:ce-latest ghcr.io/ones006/lynxwaf-openresty:ce-latest'
+
+          # Nothing pullable: it must fail, and it must fail having changed nothing.
+          if PATH="$RUNNER_TEMP/stub-down:$PATH" bash -c "$fb" _ "$RUNNER_TEMP/fb.install" "$work" >/dev/null 2>&1; then
+            echo "the fallback reported success with no registry answering" >&2
+            exit 1
+          fi
+          cmp -s "$work/.env" "$work/.env.orig" \
+            || { echo "the fallback rewrote .env although nothing could be pulled" >&2; exit 1; }
+          test ! -e "$work/.env.pre-mirror.bak"
+
+          # Mirror reachable: both keys move, both secrets stay, mode stays 0600, and the
+          # file is written through rather than replaced so an open handle keeps its inode.
+          PATH="$RUNNER_TEMP/stub-ok:$PATH" bash -c "$fb" _ "$RUNNER_TEMP/fb.install" "$work" > "$RUNNER_TEMP/fb.out"
+          grep -q '^LYNXWAF_DAEMON_IMAGE=docker.io/oneslynx/lynxwaf-daemon:ce-latest$' "$work/.env"
+          grep -q '^LYNXWAF_OPENRESTY_IMAGE=docker.io/oneslynx/lynxwaf-openresty:ce-latest$' "$work/.env"
+          grep -q '^MYSQL_ROOT_PASSWORD=ci-only-mysql-secret$' "$work/.env"
+          grep -q '^INITIAL_ADMIN_PASSWORD=ci-only-admin-secret$' "$work/.env"
+          test -f "$work/.env.pre-mirror.bak"
+          grep -q 'ghcr.io/ones006/lynxwaf-daemon:ce-latest' "$work/.env.pre-mirror.bak"
+          [ "$(stat -c %a "$work/.env")" = 600 ]
+          [ "$(stat -c %a "$work/.env.pre-mirror.bak")" = 600 ]
+          # The revert has to be printed, because .env now names a second registry and an
+          # operator who reads only the file cannot tell that it was changed for them.
+          grep -q 'pre-mirror.bak' "$RUNNER_TEMP/fb.out"
+          echo "fallback run against the stub:"
+          sed 's/^/  /' "$RUNNER_TEMP/fb.out"

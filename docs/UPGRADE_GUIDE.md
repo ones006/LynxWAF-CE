@@ -46,12 +46,16 @@ half-applied stack:
 | 2. Self-sync | Refreshes `update.sh` and `docker-compose.yml` from GitHub. The privileged `docker-compose.ebpf.yml` is **no longer distributed or synced at all**: if a copy from an older release is present the updater leaves it untouched and warns that it can drift — regenerating it is an operator action (Troubleshooting F). Downloaded files must pass a content sanity check; the previous copies are kept as `*.bak.<timestamp>`. A replaced updater re-execs itself once. |
 | 3. Snapshot | Writes image ID **and registry digest** of the daemon and data plane to `logs/pre-update-<timestamp>.txt` before anything is pulled. |
 | 4. Backup | Tars `config/` and `data/nginx/` into `backups/pre-update-<timestamp>.tgz` (mode 600). Add `--db-backup` for a `mysqldump` of `lynxwaf_db`. |
-| 5. Pull | `docker compose pull`. |
+| 5. Pull | `docker compose pull`, retried four times. On a network-class failure (the registry never answered) the same bytes are pulled from the mirror channel at `docker.io/oneslynx`, and `.env` is pointed there with the original saved as `.env.pre-mirror.bak`. A refusal from the registry is not retried that way, because GHCR answers "denied" for a tag that was never published as well as for a private one. |
 | 6. Recreate | `docker compose up -d --remove-orphans`, with `--force-recreate` when the compose file changed so new mounts and variables actually apply. |
 | 7. Validate | Waits for all four containers, flags a daemon crash-loop (restart counter went up), probes the console port, prints the `/app/.ver` now running and the licensed root-domain allowance. |
 
 Flags: `--dry-run` (plan only, changes nothing), `--yes` (no prompt, for automation),
-`--no-backup`, `--db-backup`, `--keep-compose` (never touch the local stack file), `--help`.
+`--no-backup`, `--db-backup`, `--keep-compose` (never touch the local stack file),
+`--offline[=<tar>]` (load images from a `docker save` archive and skip the registry),
+`--mirror <ns>` (namespace to fall back to; default `docker.io/oneslynx`), `--no-mirror`
+(fail the way the flag-free run would instead of pointing `.env` at another registry),
+`--help`. `install.sh` takes the same `--offline` and `--mirror` pair.
 
 ### Rolling back
 
