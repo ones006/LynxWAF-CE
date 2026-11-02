@@ -512,6 +512,28 @@ start_stack() {
         fi
     fi
 
+    # A binary carrying file capabilities cannot be exec'd unless every one of them is
+    # already in the caller's bounding set: the kernel refuses the execve with EPERM
+    # instead of masking the set down. The base stack runs cap_drop: ALL with
+    # cap_add: NET_BIND_SERVICE, so a daemon image that put setcap on its own entrypoint
+    # binary (v26.11.01 did) downloads cleanly, passes every check that only looks at
+    # tags, and then never starts. Prove the entrypoint execs in the same privilege shape
+    # before extracting configuration from it.
+    if PREFLIGHT_OUT="$(docker run --rm --network none \
+            --cap-drop ALL --cap-add NET_BIND_SERVICE \
+            --security-opt no-new-privileges:true \
+            "$daemon_img" --version 2>&1)"; then
+        log_info "Daemon image execs its own entrypoint: ${PREFLIGHT_OUT%%$'\n'*}"
+    else
+        log_error "The daemon image on this host cannot execute its own entrypoint:"
+        printf '%s\n' "$PREFLIGHT_OUT" | tail -5 | sed 's/^/             /' >&2
+        log_error "File capabilities belong on /app/LynxWaf-l4, the copy the L4 overlay names -"
+        log_error "never on /app/LynxWaf, which the unprivileged base stack has to run too."
+        log_error "Pull a current image (docker compose pull) or install from an archive built"
+        log_error "after that change; this image cannot serve the console at all."
+        exit 1
+    fi
+
     # Initialize default configurations from container image if missing on host
     if [ ! -f "$INSTALL_DIR/config/sysconfig.json" ]; then
         log_info "Extracting default configurations from daemon container image..."
@@ -788,6 +810,14 @@ POSTURE_MAPS
             echo "         instance created. Only a daemon image from before the file-capability"
             echo "         change prints that text: update.sh pulls a current image, and regenerating"
             echo "         the overlay from it says so on stderr when the image is new enough."
+        elif ! command grep -q 'entrypoint: /app/LynxWaf-l4' "${dir}/docker-compose.ebpf.yml" 2>/dev/null; then
+            echo "  [open] That overlay names no /app/LynxWaf-l4 entrypoint, so an image from before the"
+            echo "         L4 capabilities moved onto that copy printed it. Applied as it stands the"
+            echo "         datapath stays UNAVAILABLE on an older image; on the v26.11.01 build the daemon"
+            echo "         cannot start at all, because that build capped /app/LynxWaf itself and execve"
+            echo "         refuses a capped binary in a base stack that runs cap_drop: ALL. Regenerate the"
+            echo "         overlay from the running daemon (docs/TROUBLESHOOTING.md, section F) and keep"
+            echo "         its stderr: a warning there means the image is still too old."
         fi
     fi
 

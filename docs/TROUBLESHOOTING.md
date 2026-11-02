@@ -140,20 +140,26 @@ sudo mkdir -p ssl && sudo chown 1000:1000 ssl
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
 ```
 
-On an older image, or on an air-gapped host, save this block as `docker-compose.ebpf.yml`
-yourself. It is the effective content of the generated file (the generated one adds a
-comment header with the same consequences listed below), and CI re-validates it against
-the base stack on every push — so a typo here fails the pipeline instead of your server:
+On an air-gapped host, save this block as `docker-compose.ebpf.yml` yourself. It is
+the effective content of the generated file (the generated one adds a comment header
+with the same consequences listed below), and CI re-validates it against the base stack
+on every push — so a typo here fails the pipeline instead of your server. It only works
+on an image that ships `/app/LynxWaf-l4`: applied to an older daemon the container fails
+to start with `no such file or directory`, and `update.sh` has to run before this file
+does anything.
 
 <!-- LYNXWAF-XDP-OVERLAY-START: kept in sync with modules/ebpf_overlay.go -->
 ```yaml
 services:
   lynxwaf-daemon:
     network_mode: "host"
+    entrypoint: /app/LynxWaf-l4
+    # The capped copy, not the ENTRYPOINT binary: file capabilities are raised by
+    # execve only for the file that carries them, and /app/LynxWaf must stay uncapped
+    # because a capped binary cannot execve in the base stack's bounding set at all.
     # Deliberately no "user:" line. The daemon keeps the uid 1000 the base file gives
-    # it; the L4 capabilities arrive as file capabilities on /app/LynxWaf, so nothing
-    # here has to make the control plane root to reach the kernel. Making it root was
-    # the original design and it broke the state files: cap_drop: ALL removes
+    # it, so nothing here makes the control plane root to reach the kernel. Making it
+    # root was the original design and it broke the state files: cap_drop: ALL removes
     # CAP_DAC_OVERRIDE, so a uid-0 daemon cannot reopen ./data/.lock (0600, created by
     # the uid-1000 instance it replaced) and the container restart-loops.
     volumes:
@@ -200,13 +206,15 @@ services:
 you keep a copy, keeping it current is your call: regenerate it, `diff` it against yours,
 then replace it deliberately.
 
-**The image has to carry the capabilities.** `cap_add` alone does not reach a non-root
-process, so a daemon image built before the file-capability change keeps reporting
-`UNAVAILABLE` even with this overlay applied. That stale image prints the overlay text
-it was built with too, including its old `user: "0:0"` line — the file looks correct
-because the binary wrote it, and applying it crash-loops the daemon on the lock.
-`update.sh` pulls a current image, and `ebpf --overlay` prints a warning on stderr while
-the binary itself carries no capabilities; the warning going away is the confirmation.
+**The image has to carry the capabilities.** They live as file capabilities on
+`/app/LynxWaf-l4`, the copy this overlay names as its entrypoint — not on
+`/app/LynxWaf`, which must stay uncapped so the base stack can exec it at all. An
+image built before that layout ships neither the capped copy nor the `entrypoint:`
+line you can rely on, and it prints the stale overlay text it was built with too,
+including its old `user: "0:0"` line — the file looks correct because the binary
+wrote it, and applying it crash-loops the daemon on the lock. `update.sh` pulls a
+current image, and `ebpf --overlay` prints a warning on stderr while the binary the
+overlay names carries no capabilities; the warning going away is the confirmation.
 To check what the running daemon actually has:
 
 ```bash
@@ -214,9 +222,13 @@ sudo docker compose exec lynxwaf-daemon grep CapEff /proc/1/status
 ```
 
 Read PID 1, not `/proc/self/status`: `exec` launches `grep`, and the capabilities
-belong to `/app/LynxWaf` only, so an `exec`ed probe prints
+belong to `/app/LynxWaf-l4` only, so an `exec`ed probe prints
 `CapEff: 0000000000000000` even from a correctly privileged daemon. PID 1 is the
-binary itself because the image uses an exec-form `ENTRYPOINT`.
+binary itself because the image's `ENTRYPOINT` and the overlay's `entrypoint:` are
+both bare paths. To ask the daemon the same question in its own words, run
+`ebpf --status` through the capped copy
+(`docker compose exec lynxwaf-daemon /app/LynxWaf-l4 ebpf --status`): naming
+`/app/LynxWaf` there answers for the exec'd process, not for PID 1.
 
 `CapEff: 0000000000000000` on PID 1 means no privileges at all — the default stack,
 or an image that predates the file capabilities. With the overlay applied and a
