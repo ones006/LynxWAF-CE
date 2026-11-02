@@ -109,8 +109,13 @@ docker exec -it lynxwaf-daemon /app/LynxWaf create_default_user admin "YourStron
 
 Once installation finishes, open your browser and navigate to:
 ```
-https://<YOUR_SERVER_IP>:8379
+https://<YOUR_SERVER_IP>:8379/<SECURITY_ENTRANCE>
 ```
+
+> **Security Entrance:**  
+> LynxWAF protects the Web Console URL behind a secret entrance path (e.g. `/mysecretpath`).  
+> The entrance path was generated and displayed upon script completion (or configured via `SECURITY_ENTRANCE` in `/opt/lynxwaf/.env`).  
+> If you deployed manually without a security entrance, navigate to `https://<YOUR_SERVER_IP>:8379`.
 
 > **Note on TLS Certificate Warning:**  
 > LynxWAF initializes with a self-signed HTTPS certificate for management traffic security. It is completely safe to accept the browser security prompt on first launch.

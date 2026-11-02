@@ -3,14 +3,19 @@
 # Repository: https://github.com/ones006/LynxWAF-CE
 #
 # Principles:
-#   • CIS Docker Benchmark Hardened (Non-Root, Cap-Drop ALL, Read-Only FS)
-#   • L4/L7 High-Throughput Kernel Bypass / Direct Client IP Preservation
+#   • Defense-in-Depth Container Isolation (Least Privilege, Drop-All Caps where applicable)
+#   • L4/L7 High-Throughput Reverse Proxy with Direct Client IP Preservation
+#   • Isolated Loopback-Restricted Telemetry DB & State Cache (127.0.0.1)
+#   • Ephemeral In-Memory tmpfs Buffers (noexec, nosuid)
 #   • Automated Health Checks & Auto-Recovery
 # ==============================================================================
 
 services:
   # ----------------------------------------------------------------------------
   # 1. Data Plane: OpenResty WAF Reverse Proxy & Real-Time Inspection Engine
+  #    - Master process binds host ports 80/443 directly (network_mode: "host")
+  #    - Worker inspection processes drop privileges to UID 1000 (user lynxwaf)
+  #    - Ephemeral tmpfs mounts for client body & proxy cache buffers
   # ----------------------------------------------------------------------------
   lynxwaf-openresty:
     image: ${LYNXWAF_OPENRESTY_IMAGE:-ghcr.io/ones006/lynxwaf-openresty:ce-latest}
@@ -193,7 +198,7 @@ services:
       --max_connections=300
       --table_open_cache=1000
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -221,6 +226,8 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     command: >
       redis-server
       --save ""
@@ -229,7 +236,7 @@ services:
       --maxmemory-policy allkeys-lru
       --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3

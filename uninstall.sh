@@ -31,11 +31,34 @@ while [[ $# -gt 0 ]]; do
             PURGE_IMAGES=true
             shift
             ;;
+        --dir)
+            INSTALL_DIR="$2"
+            shift 2
+            ;;
+        --dir=*)
+            INSTALL_DIR="${1#*=}"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: sudo ./uninstall.sh [options]"
+            echo ""
+            echo "Options:"
+            echo "  --dir <path>     Target installation directory to uninstall (default: /opt/lynxwaf)"
+            echo "  -f, --force      Non-interactive uninstallation"
+            echo "  --purge-images   Remove cached LynxWAF container images"
+            echo "  -h, --help       Show this help message"
+            exit 0
+            ;;
         *)
             shift
             ;;
     esac
 done
+
+# If running inside a directory containing docker-compose.yml, and default /opt/lynxwaf does not exist, use current directory
+if [ -f "./docker-compose.yml" ] && [ "$INSTALL_DIR" = "/opt/lynxwaf" ] && [ ! -d "/opt/lynxwaf" ]; then
+    INSTALL_DIR="$(pwd)"
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo -e "${RED}[ERROR] LynxWAF uninstaller requires root privileges. Please run with sudo.${NC}"
@@ -91,7 +114,9 @@ else
 fi
 
 echo -e "\n${CYAN}[3/4] Deleting installation directory (${INSTALL_DIR})...${NC}"
-if [ -d "$INSTALL_DIR" ]; then
+if [ -z "$INSTALL_DIR" ] || [ "$INSTALL_DIR" = "/" ] || [ "$INSTALL_DIR" = "/root" ] || [ "$INSTALL_DIR" = "/home" ]; then
+    echo -e "${RED}[ERROR] Invalid or protected path for INSTALL_DIR: '${INSTALL_DIR}'. Skipping directory removal.${NC}"
+elif [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR"
 fi
 

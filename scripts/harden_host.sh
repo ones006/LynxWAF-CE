@@ -306,10 +306,23 @@ step_configure_firewall() {
         # WAF Management Console
         if [ -n "$ADMIN_CIDR" ]; then
             ufw allow from "$ADMIN_CIDR" to any port "$WAF_CONSOLE_PORT" proto tcp comment 'LynxWAF Console Restricted'
-            log_success "Restricted port ${WAF_CONSOLE_PORT} exclusively to ${ADMIN_CIDR}."
+            log_success "Restricted host port ${WAF_CONSOLE_PORT} exclusively to ${ADMIN_CIDR} via UFW."
+
+            # Docker published ports bypass UFW INPUT chain and are filtered in DOCKER-USER chain
+            if command -v iptables >/dev/null 2>&1 && iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+                iptables -C DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+                    iptables -I DOCKER-USER 1 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+                iptables -I DOCKER-USER 2 -p tcp --dport "$WAF_CONSOLE_PORT" -s "$ADMIN_CIDR" -j ACCEPT 2>/dev/null || true
+                iptables -I DOCKER-USER 3 -p tcp --dport "$WAF_CONSOLE_PORT" -j DROP 2>/dev/null || true
+                log_success "Applied DOCKER-USER iptables filtering for published container port ${WAF_CONSOLE_PORT}."
+            else
+                log_warn "Docker is not running or DOCKER-USER chain not found. Remember that ports published by Docker bypass UFW INPUT."
+                log_warn "To securely isolate the console, set 'LYNXWAF_BIND_IP=127.0.0.1' in .env and reach it via SSH tunnel."
+            fi
         else
             ufw allow "${WAF_CONSOLE_PORT}/tcp" comment 'LynxWAF Cyber-SOC Console'
             log_warn "Port ${WAF_CONSOLE_PORT} opened to 0.0.0.0/0 (Global Public). Remember to enable 2FA and Secret Path!"
+            log_info "For maximum security, bind console to loopback: set 'LYNXWAF_BIND_IP=127.0.0.1' in .env"
         fi
 
         echo "y" | ufw enable
@@ -325,9 +338,11 @@ step_configure_firewall() {
         if [ -n "$ADMIN_CIDR" ]; then
             firewall-cmd --permanent --add-rich-rule="rule family='ipv4' source address='${ADMIN_CIDR}' port port='${WAF_CONSOLE_PORT}' protocol='tcp' accept"
             log_success "Restricted port ${WAF_CONSOLE_PORT} exclusively to ${ADMIN_CIDR} via firewalld rich rule."
+            log_info "Note: If running Docker containers, consider binding the console to 127.0.0.1 via LYNXWAF_BIND_IP in .env."
         else
             firewall-cmd --permanent --add-port="${WAF_CONSOLE_PORT}/tcp"
             log_warn "Port ${WAF_CONSOLE_PORT} opened to 0.0.0.0/0 via firewalld."
+            log_info "For maximum security, bind console to loopback: set 'LYNXWAF_BIND_IP=127.0.0.1' in .env"
         fi
 
         firewall-cmd --reload

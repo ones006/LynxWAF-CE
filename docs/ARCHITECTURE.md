@@ -51,20 +51,26 @@ graph TD
 
 ---
 
-## 3. Defense-in-Depth Container Hardening
+## 3. Defense-in-Depth Container Hardening & Privilege Model
 
-LynxWAF is engineered following the **CIS Docker Benchmark** and the principle of least privilege:
+LynxWAF applies the principle of least privilege and strict isolation across its container stack:
 
-1. **Non-Root Execution**:
-   - Both `lynxwaf-openresty` and `lynxwaf-daemon` execute as unprivileged user `lynxwaf` (UID `1000`, GID `1000`).
-2. **Capability Dropping**:
-   - `cap_drop: ALL` drops all kernel capabilities.
-   - Only strictly necessary capabilities (e.g., `NET_BIND_SERVICE` for ports 80/443) are granted.
-3. **Read-Only Root Filesystem**:
-   - Container root filesystems are mounted read-only (`read_only: true`).
-   - Ephemeral working files are confined to in-memory `tmpfs` mounts with `noexec,nosuid`.
-4. **No Privilege Escalation**:
-   - `security_opt: - no-new-privileges:true` prevents child processes from acquiring additional privileges.
+1. **Control Plane (`lynxwaf-daemon`)**:
+   - Executes strictly as unprivileged non-root user `lynxwaf` (UID `1000`, GID `1000`).
+   - Drops all Linux kernel capabilities (`cap_drop: ALL`) and retains only `NET_BIND_SERVICE` to bind management port 8379.
+   - Enforces `security_opt: - no-new-privileges:true` to block child processes from gaining elevated privileges.
+   - External telemetry and outbound connections are disabled by default.
+
+2. **Data Plane (`lynxwaf-openresty`)**:
+   - Operates in `network_mode: "host"` to preserve true client source IPs and eliminate Docker bridge NAT overhead.
+   - Master process initializes and binds privileged host ports (80/443), then immediately drops privileges to unprivileged worker processes running as user `lynxwaf` (UID `1000`, GID `1000`) for all traffic inspection and reverse proxying.
+   - Ephemeral working files and request buffers (`client_body_temp`, `proxy_temp`, `fastcgi_temp`, `uwsgi_temp`, `scgi_temp`, `/tmp`, `/run`) are mounted to in-memory `tmpfs` volumes with `noexec,nosuid` flags, ensuring payload buffers never touch disk.
+   - Engine configuration and web root directories are mounted read-only (`:ro`).
+
+3. **Telemetry & State Engines (`lynxwaf-mysql` & `lynxwaf-redis`)**:
+   - Isolated strictly to host loopback interfaces (`127.0.0.1:33060` and `127.0.0.1:6379`), preventing WAN-side exposure.
+   - Execute with dropped kernel capabilities (`cap_drop: ALL`) keeping only minimum operational capabilities (`SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`).
+   - Enforce `security_opt: - no-new-privileges:true`.
 
 ---
 

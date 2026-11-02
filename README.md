@@ -41,7 +41,7 @@ Built on an optimized **OpenResty / LuaJIT** data plane and a **compiled Go** co
 - 🔒 **Zero Telemetry Guarantee**: Runs 100% on your own infrastructure. No logs, traffic metrics, or SSL keys are ever phoned home to external cloud providers. The one request that runs unconfigured, and how to switch it off, is spelled out in [Architecture §5](./docs/ARCHITECTURE.md#5-zero-telemetry--data-sovereignty-guarantee).
 - 🤖 **Silent Anti-Bot Defense**: Invisible computational Proof-of-Work (PoW) challenge that mitigates scrapers and brute-force bots without disrupting human visitors with CAPTCHAs.
 - 🍓 **Native ARM64 & Raspberry Pi Ready**: Lightweight footprint (~300MB idle RAM) running natively on **Raspberry Pi 4 / 5, Orange Pi, Rockchip, Intel NUC, and Homelab SBC mini-PCs**. Perfect for home labs, self-hosted services, and small business on-premise appliances.
-- 🐳 **Hardened CIS Container Stack**: Non-root execution (`uid 1000`), read-only root filesystems, and `cap_drop: ALL`.
+- 🐳 **Hardened Container Stack**: Least-privilege isolation, non-root worker execution (`uid 1000`), `no-new-privileges`, and in-memory `tmpfs` execution boundaries.
 
 ---
 
@@ -113,7 +113,7 @@ docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path "mysecretpath"
 | **Custom SSL/TLS Support** | Upload custom enterprise or wildcard certificates with instant Lua hot-reload. |
 | **Real-Time SOC Console** | Modern Vue 3 dashboard displaying threat attack graphs, live logs, and interception telemetry. |
 | **CC / Rate Limiting** | Sliding window rate limits stored in Redis to protect origin APIs against Layer 7 denial of service. |
-| **CIS Docker Hardening** | Unprivileged non-root containers, drop-all Linux capabilities, and immutable read-only filesystems. |
+| **Hardened Container Security** | Unprivileged non-root workers (`uid 1000`), drop-all Linux capabilities on control plane, and in-memory `tmpfs` attack surface reduction. |
 
 ---
 
