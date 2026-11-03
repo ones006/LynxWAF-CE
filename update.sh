@@ -627,6 +627,11 @@ fi
 # 6. Recreate
 # ------------------------------------------------------------------------------
 log_step "[6/7] Recreating containers"
+
+# Ensure host mount directories exist with ownership for non-root lynxwaf (UID 1000)
+mkdir -p "$SCRIPT_DIR/ssl" "$SCRIPT_DIR/config" "$SCRIPT_DIR/data" "$SCRIPT_DIR/logs"
+chown -R 1000:1000 "$SCRIPT_DIR/ssl" 2>/dev/null || true
+chmod -R 775 "$SCRIPT_DIR/ssl" 2>/dev/null || true
 if [ "$COMPOSE_CHANGED" = true ]; then
     log_info "Compose file changed this run: forcing a full recreate so new mounts and variables apply."
     "${COMPOSE_CMD[@]}" up -d --remove-orphans --force-recreate
