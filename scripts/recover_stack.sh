@@ -68,10 +68,12 @@ unset COMPOSE_FILE 2>/dev/null || true
 log_info "Stopping any stuck containers..."
 "${COMPOSE_CMD[@]}" down --remove-orphans 2>/dev/null || true
 
-# Remove any lingering run-temp containers
+# Remove any lingering run-temp containers and stale file locks
 for c in $(docker ps -a --filter "name=lynxwaf-lynxwaf-daemon-run" -q 2>/dev/null || true); do
     docker rm -f "$c" >/dev/null 2>&1 || true
 done
+rm -f data/.lock data/.pid 2>/dev/null || true
+log_success "Stale containers and process lockfiles cleaned."
 
 # 5. Ensure docker-compose.yml has ./ssl mount
 if [ -f "docker-compose.yml" ]; then
@@ -160,3 +162,4 @@ else
     docker logs --tail 30 lynxwaf-daemon 2>&1 || true
     echo -e "\nCheck container status with: sudo docker ps"
 fi
+
