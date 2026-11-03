@@ -132,12 +132,17 @@ out of date (needs a `lynxwaf-daemon` image that ships `ebpf --overlay`):
 ```bash
 cd /opt/lynxwaf
 # The pipe needs root: "sudo docker … > file" is *your shell* opening the file.
-docker compose run --rm --no-deps lynxwaf-daemon ebpf --overlay | sudo tee docker-compose.ebpf.yml > /dev/null
+# Pass -T to disable pseudo-TTY allocation and avoid hanging when piping.
+docker compose run --rm --no-deps -T lynxwaf-daemon ebpf --overlay | sudo tee docker-compose.ebpf.yml > /dev/null
 sudo chmod 600 docker-compose.ebpf.yml
 # Docker creates ./ssl root-owned, and the daemon runs as uid 1000: without this it
 # cannot write the console's self-signed certificate and restart-loops.
 sudo mkdir -p ssl && sudo chown 1000:1000 ssl
 sudo docker compose -f docker-compose.yml -f docker-compose.ebpf.yml up -d --force-recreate lynxwaf-daemon
+
+# Keep using the overlay for every later docker compose run and update:
+export COMPOSE_FILE=docker-compose.yml:docker-compose.ebpf.yml
+# (or append COMPOSE_FILE=docker-compose.yml:docker-compose.ebpf.yml to .env)
 ```
 
 On an air-gapped host, save this block as `docker-compose.ebpf.yml` yourself. It is
