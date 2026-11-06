@@ -31,6 +31,7 @@
 #   sudo bash update.sh --mirror docker.io/oneslynx   # namespace to fall back to when
 #                                      GHCR never answers (default: docker.io/oneslynx)
 #   sudo bash update.sh --no-mirror    # never point .env at another registry; fail instead
+#   sudo bash update.sh --enable-l4    # also grant kernel eBPF/XDP access (console L4 toggle)
 #
 # Exit codes: 0 updated or already current, 1 failure, 2 invalid usage.
 # ==============================================================================
@@ -61,6 +62,7 @@ COMPOSE_CHANGED=false
 OFFLINE=false
 OFFLINE_IMAGE_TAR=""
 MIRROR_FALLBACK=true
+ENABLE_L4=false
 
 log_info()    { echo -e "${CYAN}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[ OK ]${NC} $*"; }
@@ -91,6 +93,7 @@ while [ $# -gt 0 ]; do
         --mirror)       [ $# -ge 2 ] || die "--mirror needs a namespace, e.g. --mirror docker.io/oneslynx"
                         MIRROR_NAMESPACE="$2"; shift 2 ;;
         --no-mirror)    MIRROR_FALLBACK=false; shift ;;
+        --enable-l4)    ENABLE_L4=true; shift ;;
         --help|-h)
             sed -n '2,35p' "${BASH_SOURCE[0]}"
             exit 0
@@ -192,6 +195,16 @@ else
     rm -f "$UPDATE_TMP"
     log_warn "Could not fetch update.sh from GitHub; continuing with the local copy."
 fi
+
+# l4.sh is the one-time host switch behind the console's L4 toggle.
+L4_TMP="$(mktemp "${TMPDIR:-/tmp}/lynxwaf-l4.XXXXXX")"
+if [ "$DRY_RUN" != true ] && fetch_checked "${GITHUB_RAW}/l4.sh" "$L4_TMP" "LynxWAF L4 Datapath Switch" && bash -n "$L4_TMP" 2>/dev/null; then
+    if ! cmp -s "$L4_TMP" "$SCRIPT_DIR/l4.sh" 2>/dev/null; then
+        mv "$L4_TMP" "$SCRIPT_DIR/l4.sh" && chmod +x "$SCRIPT_DIR/l4.sh"
+        log_success "l4.sh synced from upstream"
+    fi
+fi
+rm -f "$L4_TMP" 2>/dev/null || true
 
 # Keep the stack file in step with upstream. The privileged eBPF/XDP overlay is
 # deliberately NOT synced: it is no longer distributed as a file at all, because
@@ -632,6 +645,15 @@ log_step "[6/7] Recreating containers"
 mkdir -p "$SCRIPT_DIR/ssl" "$SCRIPT_DIR/config" "$SCRIPT_DIR/data" "$SCRIPT_DIR/logs"
 chown -R 1000:1000 "$SCRIPT_DIR/ssl" 2>/dev/null || true
 chmod -R 775 "$SCRIPT_DIR/ssl" 2>/dev/null || true
+# An L4-enabled host regenerates its overlay from the image just pulled, so the
+# privileged file always matches the binary it starts.
+if grep -q '^COMPOSE_FILE=.*docker-compose.ebpf.yml' "$SCRIPT_DIR/.env" 2>/dev/null && [ -x "$SCRIPT_DIR/l4.sh" ]; then
+    if ( cd "$SCRIPT_DIR" && bash l4.sh refresh ); then
+        COMPOSE_CHANGED=true
+    else
+        log_warn "L4 overlay refresh failed; continuing with the existing copy."
+    fi
+fi
 if [ "$COMPOSE_CHANGED" = true ]; then
     log_info "Compose file changed this run: forcing a full recreate so new mounts and variables apply."
     "${COMPOSE_CMD[@]}" up -d --remove-orphans --force-recreate
@@ -959,6 +981,11 @@ POSTURE_MAPS
 # Advisory only: this report must never be the reason an update is reported as failed.
 POSTURE_DIR="$SCRIPT_DIR"
 report_host_posture || true
+
+if [ "$ENABLE_L4" = true ] && [ -x "$SCRIPT_DIR/l4.sh" ]; then
+    ( cd "$SCRIPT_DIR" && ASSUME_YES=true bash l4.sh enable -y ) \
+        || log_warn "L4 datapath could not be prepared; the WAF keeps running without it."
+fi
 
 "${COMPOSE_CMD[@]}" ps || true
 

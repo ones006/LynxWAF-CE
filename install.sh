@@ -30,6 +30,7 @@ INSTALL_DIR="/opt/lynxwaf"
 DEFAULT_PORT="8379"
 WAF_PORT="${DEFAULT_PORT}"
 NON_INTERACTIVE=false
+ENABLE_L4=ask
 OFFLINE=false
 OFFLINE_IMAGE_TAR=""
 MIRROR_FALLBACK=true
@@ -228,6 +229,14 @@ while [[ $# -gt 0 ]]; do
             NON_INTERACTIVE=true
             shift
             ;;
+        --enable-l4)
+            ENABLE_L4=yes
+            shift
+            ;;
+        --no-l4)
+            ENABLE_L4=no
+            shift
+            ;;
         --offline)
             OFFLINE=true
             shift
@@ -253,6 +262,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --dir <path>       Target directory for installation (default: /opt/lynxwaf)"
             echo "  --port <port>      Cyber-SOC Web Console Port (default: 8379)"
             echo "  -y, --yes          Non-interactive mode (auto-accept defaults)"
+            echo "  --enable-l4        Grant kernel eBPF/XDP access now (L4 toggle works in the console)"
+            echo "  --no-l4            Do not ask about the L4 datapath"
             echo "  --offline[=<tar>]  Load images from a 'docker save' archive instead of GHCR"
             echo "                     (default archive: <dir>/offline/*.tar)"
             echo "  --mirror <ns>      Namespace to fall back to when GHCR never answers"
@@ -438,6 +449,7 @@ prepare_environment() {
     sync_repo_script "test_poc_simulation.sh" "SIMULASI SERANGAN POC"
     sync_repo_script "update.sh" "In-Place Updater"
     sync_repo_script "uninstall.sh" "Clean & Total Uninstaller"
+    sync_repo_script "l4.sh" "LynxWAF L4 Datapath Switch"
 
     # Initialize core OpenResty nginx.conf if not present
     if [ ! -f "$INSTALL_DIR/data/nginx/conf/nginx.conf" ]; then
@@ -1074,6 +1086,34 @@ send_install_telemetry() {
         || true
 }
 
+# One-time host step so the console's L4 toggle can work. Optional and
+# reversible ("sudo bash l4.sh disable"); a failure never fails the install.
+setup_l4_datapath() {
+    [ -f "$INSTALL_DIR/l4.sh" ] || return 0
+    if [ "$ENABLE_L4" = ask ]; then
+        if [ "$NON_INTERACTIVE" = true ] || [ ! -t 0 ]; then
+            ENABLE_L4=no
+        else
+            echo ""
+            echo "Kernel-Level eBPF / XDP L4 Mitigation drops volumetric floods in the NIC driver."
+            echo "Enabling it lets you switch it on/off later with one click in the console,"
+            echo "but the console container then uses the host network (port 8379 on all interfaces)."
+            read -r -p "Prepare the L4 datapath now? (y/N): " l4_choice
+            [[ "$l4_choice" =~ ^[Yy]$ ]] && ENABLE_L4=yes || ENABLE_L4=no
+        fi
+    fi
+    if [ "$ENABLE_L4" = yes ]; then
+        log_info "Preparing kernel eBPF/XDP access for the console toggle..."
+        if ( cd "$INSTALL_DIR" && ASSUME_YES=true bash l4.sh enable -y ); then
+            log_success "L4 datapath ready: Console > Network Defense (L4) > toggle ON."
+        else
+            log_warn "L4 datapath could not be prepared on this host; the WAF runs normally without it."
+        fi
+    else
+        log_info "L4 datapath not prepared. Enable it any time with: cd ${INSTALL_DIR} && sudo bash l4.sh enable"
+    fi
+}
+
 main() {
     print_banner
     check_privileges
@@ -1087,6 +1127,7 @@ main() {
     # containers, their port bindings and the firewall state are all real by then.
     POSTURE_DIR="$INSTALL_DIR"
     report_host_posture || true
+    setup_l4_datapath || true
     display_completion_banner
     send_install_telemetry
 }
