@@ -10,9 +10,9 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TARGET_DIRS = ("docs", "assets")
+TARGET_DIRS = ("docs", "assets", "scripts")
 TARGET_FILES = ("README.md", "index.html")
-EXTENSIONS = (".md", ".html", ".vue", ".ts")
+EXTENSIONS = (".md", ".html", ".vue", ".ts", ".sh", ".py")
 SKIP_DIRS = {"node_modules", ".git", "dist", "logs", "data"}
 
 EMOJI = re.compile(
@@ -26,6 +26,9 @@ def iter_files():
         path = os.path.join(ROOT, rel)
         if os.path.isfile(path):
             yield path
+    for name in os.listdir(ROOT):
+        if name.endswith((".sh", ".py")):
+            yield os.path.join(ROOT, name)
     for rel in TARGET_DIRS:
         base = os.path.join(ROOT, rel)
         for dirpath, dirnames, filenames in os.walk(base):

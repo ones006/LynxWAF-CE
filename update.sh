@@ -989,7 +989,7 @@ fi
 
 "${COMPOSE_CMD[@]}" ps || true
 
-echo -e "\n${GREEN}${BOLD}✔ LynxWAF Community Edition updated successfully!${NC}"
+echo -e "\n${GREEN}${BOLD}[OK] LynxWAF Community Edition updated successfully!${NC}"
 echo -e "${BOLD}Rollback${NC} (image that was running before this update):"
 echo -e "  set LYNXWAF_DAEMON_IMAGE / LYNXWAF_OPENRESTY_IMAGE in .env to the"
 echo -e "  @sha256 digest recorded in ${SNAPSHOT_FILE}"

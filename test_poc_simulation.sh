@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# 🛡️ LYNXWAF — SUITE SIMULASI SERANGAN POC
+# [LynxWAF] LYNXWAF — SUITE SIMULASI SERANGAN POC
 # Jalankan skrip ini saat demonstrasi PoC untuk membuktikan kemampuan proteksi
 # LynxWAF secara langsung di hadapan calon klien.
 #
@@ -27,7 +27,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 echo -e "\n${CYAN}${BOLD}==================================================================${NC}"
-echo -e "${CYAN}${BOLD}              🛡️ LYNXWAF — SUITE SIMULASI SERANGAN POC              ${NC}"
+echo -e "${CYAN}${BOLD}              [LynxWAF] LYNXWAF — SUITE SIMULASI SERANGAN POC              ${NC}"
 echo -e "${CYAN}${BOLD}==================================================================${NC}"
 echo -e "Target Audit   : ${YELLOW}${TARGET}${NC}"
 echo -e "Waktu Eksekusi : $(date '+%Y-%m-%d %H:%M:%S WIB')\n"
@@ -50,11 +50,11 @@ run_test() {
     http_code=$(eval "${curl_cmd} --noproxy '*' -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -k")
 
     if [ "$http_code" == "$expected_code" ] || [ "$http_code" == "403" ] || [ "$http_code" == "429" ]; then
-        echo -e "    ${GREEN}✔ STATUS: BLOCKED SECURELY (HTTP ${http_code})${NC}"
+        echo -e "    ${GREEN}[OK] STATUS: BLOCKED SECURELY (HTTP ${http_code})${NC}"
         echo -e "    ${GREEN}  Keterangan: LynxWAF berhasil mengintersepsi serangan.${NC}\n"
         PASSED=$((PASSED + 1))
     else
-        echo -e "    ${RED}✘ STATUS: UNEXPECTED RESPONSE (HTTP ${http_code})${NC}"
+        echo -e "    ${RED}[FAIL] STATUS: UNEXPECTED RESPONSE (HTTP ${http_code})${NC}"
         echo -e "    ${YELLOW}  Pastikan status domain dalam mode PROTECTING (aktif).${NC}\n"
     fi
 }
@@ -121,7 +121,7 @@ for i in {1..30}; do
 done
 TOTAL=$((TOTAL + 1))
 if [ "$blocked_dos" -gt 0 ]; then
-    echo -e "    ${GREEN}✔ STATUS: RATE-LIMITING MITIGATED (${blocked_dos}/30 requests restricted)${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: RATE-LIMITING MITIGATED (${blocked_dos}/30 requests restricted)${NC}"
     echo -e "    ${GREEN}  Keterangan: LynxWAF CC Defense merespons lonjakan trafik.${NC}\n"
     PASSED=$((PASSED + 1))
 else
@@ -156,11 +156,11 @@ echo -e "${BOLD}[20] BOT INTELLIGENCE — Verified Search Engine Bypass & Live E
 echo -e "    ${CYAN}Payload Command:${NC} curl -k -A \"Googlebot/2.1 (+http://www.google.com/bot.html)\" \"${TARGET}/\""
 google_code=$(curl -k --noproxy "*" -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -A "Googlebot/2.1 (+http://www.google.com/bot.html)" "${TARGET}/")
 if [ "$google_code" != "000" ]; then
-    echo -e "    ${GREEN}✔ STATUS: CLASSIFIED & RECORDED (HTTP ${google_code})${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: CLASSIFIED & RECORDED (HTTP ${google_code})${NC}"
     echo -e "    ${GREEN}  Keterangan: Googlebot diizinkan & dicatat ke Telemetry tanpa terblokir challenge.${NC}\n"
     PASSED=$((PASSED + 1))
 else
-    echo -e "    ${RED}✘ STATUS: CONNECTION FAILED${NC}\n"
+    echo -e "    ${RED}[FAIL] STATUS: CONNECTION FAILED${NC}\n"
 fi
 
 TOTAL=$((TOTAL + 1))
@@ -168,11 +168,11 @@ echo -e "${BOLD}[21] BOT INTELLIGENCE — AI LLM Scraper Edge Detection (OpenAI 
 echo -e "    ${CYAN}Payload Command:${NC} curl -k -A \"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)\" \"${TARGET}/\""
 gpt_code=$(curl -k --noproxy "*" -s -o /dev/null -w '%{http_code}' --connect-timeout 5 -A "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)" "${TARGET}/")
 if [ "$gpt_code" != "000" ]; then
-    echo -e "    ${GREEN}✔ STATUS: IDENTIFIED & TELEMETRY UPDATED (HTTP ${gpt_code})${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: IDENTIFIED & TELEMETRY UPDATED (HTTP ${gpt_code})${NC}"
     echo -e "    ${GREEN}  Keterangan: GPTBot terdeteksi real-time di tab Bot & Crawler Intelligence.${NC}\n"
     PASSED=$((PASSED + 1))
 else
-    echo -e "    ${RED}✘ STATUS: CONNECTION FAILED${NC}\n"
+    echo -e "    ${RED}[FAIL] STATUS: CONNECTION FAILED${NC}\n"
 fi
 
 # ------------------------------------------------------------------------------
@@ -183,7 +183,7 @@ echo -e "${BOLD}[22] SURGE QUEUE — Virtual Waiting Room (Anti-Flash-Crowd Surg
 echo -e "    ${CYAN}Payload Command:${NC} curl -k -s \"${TARGET}/\""
 wait_resp=$(curl -k --noproxy "*" -s --connect-timeout 5 "${TARGET}/" 2>/dev/null)
 if echo "$wait_resp" | grep -qiE "waiting room|queue-id|x-lynxwaf-queue|antrean virtual"; then
-    echo -e "    ${GREEN}✔ STATUS: ACTIVE / QUEUE PROTOCOL VERIFIED${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: ACTIVE / QUEUE PROTOCOL VERIFIED${NC}"
     echo -e "    ${GREEN}  Keterangan: Virtual Waiting Room aktif merespons lonjakan antrean.${NC}\n"
     PASSED=$((PASSED + 1))
 else
@@ -196,14 +196,14 @@ echo -e "${BOLD}[23] ANTI-SCRAPER — Dynamic Client Obfuscation & Crawler Water
 echo -e "    ${CYAN}Payload Command:${NC} curl -k -s -H 'Accept: text/html' \"${TARGET}/\""
 scrape_resp=$(curl -k --noproxy "*" -s -H 'Accept: text/html' --connect-timeout 5 "${TARGET}/" 2>/dev/null)
 if echo "$scrape_resp" | grep -qiE "lynxwaf_challenge|pow_challenge|challenge\.js"; then
-    echo -e "    ${GREEN}✔ STATUS: ACTIVE CLIENT CHALLENGE DETECTED${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: ACTIVE CLIENT CHALLENGE DETECTED${NC}"
     echo -e "    ${GREEN}  Keterangan: Silent Anti-Bot PoW script terinjeksi pada respons HTML.${NC}\n"
     PASSED=$((PASSED + 1))
 elif [ -n "$scrape_resp" ]; then
     echo -e "    ${CYAN}ℹ STATUS: CLEAN HTML SERVED (Direct Mode)${NC}"
     echo -e "    ${CYAN}  Keterangan: Halaman disajikan normal (Silent PoW aktif jika mode Challenge dihidupkan).${NC}\n"
 else
-    echo -e "    ${RED}✘ STATUS: NO RESPONSE${NC}\n"
+    echo -e "    ${RED}[FAIL] STATUS: NO RESPONSE${NC}\n"
 fi
 
 # ------------------------------------------------------------------------------
@@ -214,7 +214,7 @@ echo -e "${BOLD}[24] OUTBOUND DLP [SOVEREIGN] — Sensitive PII Data Masking (UU
 echo -e "    ${CYAN}Payload Command:${NC} curl -k \"${TARGET}/api/user-profile\""
 dlp_resp=$(curl -k --noproxy "*" -s --connect-timeout 5 "${TARGET}/api/user-profile" 2>/dev/null)
 if echo "$dlp_resp" | grep -qE "[0-9]{6}\*{6}[0-9]{4}|\*{4}-\*{4}-\*{4}-[0-9]{4}"; then
-    echo -e "    ${GREEN}✔ STATUS: DATA MASKED COMPLIANTLY (UU PDP / PCI-DSS)${NC}"
+    echo -e "    ${GREEN}[OK] STATUS: DATA MASKED COMPLIANTLY (UU PDP / PCI-DSS)${NC}"
     echo -e "    ${GREEN}  Keterangan: NIK KTP dan nomor kartu kredit otomatis dimasking sebelum keluar ke klien.${NC}\n"
     PASSED=$((PASSED + 1))
 else
@@ -232,7 +232,7 @@ echo -e "Total Skenario Uji : ${TOTAL}"
 echo -e "Skenario Sukses    : ${GREEN}${BOLD}${PASSED} / ${TOTAL}${NC}"
 echo -e "Tingkat Keberhasilan : ${GREEN}${BOLD}$(( (PASSED * 100) / TOTAL ))% SCENARIOS VERIFIED${NC}"
 echo -e "------------------------------------------------------------------"
-echo -e "💡 ${BOLD}Langkah Selanjutnya untuk Presentasi ke Klien:${NC}"
+echo -e "[INFO] ${BOLD}Langkah Selanjutnya untuk Presentasi ke Klien:${NC}"
 echo -e "1. Buka dashboard LynxWAF di menu: ${YELLOW}Interception Log (/interception)${NC}"
 echo -e "   Tunjukkan seluruh rincian serangan yang baru saja dieksekusi di atas."
 echo -e "2. Buka menu ${YELLOW}Host Telemetry (/monitoring) -> Bot & Crawler Intelligence${NC}"

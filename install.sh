@@ -505,7 +505,7 @@ http {
 
         location / {
             default_type text/html;
-            return 200 '<!DOCTYPE html><html><head><title>LynxWAF</title></head><body style="font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#0b0f19;color:#e2e8f0;"><h1 style="color:#38bdf8;">🛡️ LynxWAF Data Plane Active</h1><p style="color:#94a3b8;font-size:16px;">The WAF reverse proxy engine is operational. Access the Cyber-SOC console to configure protected domains.</p></body></html>\n';
+            return 200 '<!DOCTYPE html><html><head><title>LynxWAF</title></head><body style="font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:60px 20px;background:#0b0f19;color:#e2e8f0;"><h1 style="color:#38bdf8;">[LynxWAF] LynxWAF Data Plane Active</h1><p style="color:#94a3b8;font-size:16px;">The WAF reverse proxy engine is operational. Access the Cyber-SOC console to configure protected domains.</p></body></html>\n';
         }
     }
 }

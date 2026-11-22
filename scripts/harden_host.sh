@@ -32,13 +32,13 @@ log() {
     echo -e "${CYAN}[INFO]${NC} $1" | tee -a "$LOG_FILE"
 }
 log_success() {
-    echo -e "${GREEN}[✔ SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GREEN}[[OK] SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
 }
 log_warn() {
-    echo -e "${YELLOW}[⚠ WARNING]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}[[WARN] WARNING]${NC} $1" | tee -a "$LOG_FILE"
 }
 log_error() {
-    echo -e "${RED}[✖ ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${RED}[[FAIL] ERROR]${NC} $1" | tee -a "$LOG_FILE"
 }
 
 # ------------------------------------------------------------------------------
@@ -422,7 +422,7 @@ execute_all() {
     step_configure_fail2ban
     audit_system
 
-    echo -e "${GREEN}${BOLD}✔ ALL HARDENING MODULES APPLIED SUCCESSFULLY!${NC}"
+    echo -e "${GREEN}${BOLD}[OK] ALL HARDENING MODULES APPLIED SUCCESSFULLY!${NC}"
     echo -e "  • A backup of original configs is saved at: ${BACKUP_DIR}"
     echo -e "  • Full log output saved at: ${LOG_FILE}"
     echo -e "  • ${YELLOW}${BOLD}IMPORTANT:${NC} Open a NEW terminal tab and verify SSH login on port ${TARGET_SSH_PORT} before closing this session!"
@@ -450,7 +450,7 @@ execute_selective() {
     [[ "$S6" =~ ^[Yy]$ ]] && step_configure_fail2ban
 
     audit_system
-    echo -e "${GREEN}${BOLD}✔ Selected hardening steps applied successfully!${NC}"
+    echo -e "${GREEN}${BOLD}[OK] Selected hardening steps applied successfully!${NC}"
 }
 
 # Entrypoint

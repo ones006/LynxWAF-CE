@@ -148,7 +148,7 @@ echo ""
 
 if [ "$READY" = true ]; then
     SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || echo '127.0.0.1')"
-    echo -e "\n${GREEN}${BOLD}✔ LynxWAF Stack Successfully Recovered & Running!${NC}"
+    echo -e "\n${GREEN}${BOLD}[OK] LynxWAF Stack Successfully Recovered & Running!${NC}"
     echo -e "---------------------------------------------------------------------"
     echo -e "  • Web Console HTTPS : ${CYAN}https://${SERVER_IP}:8379${NC}"
     echo -e "  • License Customer  : ${BOLD}PT Tangara Mitrakom${NC}"

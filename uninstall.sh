@@ -129,4 +129,4 @@ for port in 80 443 8379; do
     fi
 done
 
-echo -e "\n${GREEN}${BOLD}✔ LynxWAF Community Edition has been completely uninstalled from this server.${NC}\n"
+echo -e "\n${GREEN}${BOLD}[OK] LynxWAF Community Edition has been completely uninstalled from this server.${NC}\n"
