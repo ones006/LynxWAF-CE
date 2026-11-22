@@ -79,7 +79,7 @@ LynxWAF applies the principle of least privilege and strict isolation across its
 ```
 1. Client establishes TCP connection on port 80 or 443.
 2. TLS Termination & SNI routing evaluated by OpenResty.
-3. IP Access Control Check (Whitelist ➔ bypass; Blacklist ➔ drop).
+3. IP Access Control Check (Whitelist  bypass; Blacklist  drop).
 4. Silent Anti-Bot Challenge (Evaluates PoW token cookie if challenge enabled).
 5. Rate Limiting Check (Evaluates sliding window counters in Redis).
 6. L7 Semantic AST Inspection:
@@ -88,12 +88,12 @@ LynxWAF applies the principle of least privilege and strict isolation across its
    - Request Body (JSON, Multipart form, URL-encoded)
 7. Decision:
    - If ANY rule triggers in "Protecting" mode:
-     ➔ Execution stops immediately
-     ➔ HTTP 403 Forbidden with unique Incident ID returned to client
-     ➔ Attack metadata written to Telemetry DB asynchronously
+      Execution stops immediately
+      HTTP 403 Forbidden with unique Incident ID returned to client
+      Attack metadata written to Telemetry DB asynchronously
    - If clean:
-     ➔ Request forwarded to upstream backend via HTTP keepalive connection
-     ➔ Origin response proxied back to client
+      Request forwarded to upstream backend via HTTP keepalive connection
+      Origin response proxied back to client
 ```
 
 ---

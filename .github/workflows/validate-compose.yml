@@ -15,6 +15,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # The landing page and docs use Lucide SVG icons; emoji are not allowed.
+      - name: No emoji in documentation or landing page
+        run: python3 scripts/check_no_emoji.py
+
       - name: Copy sample environment configuration
         run: cp .env.example .env
 

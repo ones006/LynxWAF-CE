@@ -116,7 +116,7 @@ LynxWAF Community Edition has built-in forward compatibility with the Sovereign 
    ```
    https://<YOUR_SERVER_IP>:8379
    ```
-3. Navigate to **Settings ➔ License & Cryptography**.
+3. Navigate to **Settings  License & Cryptography**.
 4. Upload your `lynxwaf.lic` file or paste the signed Ed25519 JSON token into the activation box.
 5. Click **Verify & Activate**.
 6. **Result**: All Sovereign modules activate **instantly in memory without downtime or container restarts!**

@@ -5,7 +5,7 @@
 <h1 align="center">LynxWAF Community Edition (CE)</h1>
 
 <p align="center">
-  <strong>Next-Gen Sovereign Web Application Firewall & Semantic L7 Attack Defense Engine</strong>
+  <strong>Web Application Firewall for On-Premise and Private Cloud</strong>
 </p>
 
 <p align="center">
@@ -29,23 +29,23 @@
 
 ---
 
-## 📖 Overview
+## <img src="assets/icons/book-open.svg" width="18" height="18" alt="Book Open" style="vertical-align:-3px;margin-right:4px;" /> Overview
 
-**LynxWAF Community Edition (CE)** is an ultra-fast, modern, and unencumbered Web Application Firewall (WAF) designed to protect websites, APIs, and microservices against OWASP Top 10 vulnerabilities, automated bot floods, and zero-day exploits.
+**LynxWAF Community Edition (CE)** is a Web Application Firewall (WAF) for protecting websites, APIs, and microservices against OWASP Top 10 vulnerabilities, automated bot floods, and zero-day exploits.
 
-Built on an optimized **OpenResty / LuaJIT** data plane and a **compiled Go** control plane with a cyber-SOC single-page management console, LynxWAF delivers enterprise-grade protection with zero cloud dependencies and **100% on-premise data sovereignty**.
+Built on an optimized **OpenResty / LuaJIT** data plane and a **compiled Go** control plane with a cyber-SOC single-page management console, LynxWAF provides layered protection and runs on infrastructure you control.
 
 ### Why Choose LynxWAF CE?
-- 🛡️ **Semantic AST Analysis**: Evaluates Abstract Syntax Trees rather than brittle regular expressions, defeating evasion techniques like comment injection, encoding variations, and nested payloads.
-- ⚡ **High Throughput & Low Latency**: Sub-millisecond inspection latency powered by LuaJIT and connection-pooling reverse proxy.
-- 🔒 **Zero Telemetry Guarantee**: Runs 100% on your own infrastructure. No logs, traffic metrics, or SSL keys are ever phoned home to external cloud providers. The one request that runs unconfigured, and how to switch it off, is spelled out in [Architecture §5](./docs/ARCHITECTURE.md#5-zero-telemetry--data-sovereignty-guarantee).
-- 🤖 **Silent Anti-Bot Defense**: Invisible computational Proof-of-Work (PoW) challenge that mitigates scrapers and brute-force bots without disrupting human visitors with CAPTCHAs.
-- 🍓 **Native ARM64 & Raspberry Pi Ready**: Lightweight footprint (~300MB idle RAM) running natively on **Raspberry Pi 4 / 5, Orange Pi, Rockchip, Intel NUC, and Homelab SBC mini-PCs**. Perfect for home labs, self-hosted services, and small business on-premise appliances.
-- 🐳 **Hardened Container Stack**: Least-privilege isolation, non-root worker execution (`uid 1000`), `no-new-privileges`, and in-memory `tmpfs` execution boundaries.
+- <img src="assets/icons/shield.svg" width="18" height="18" alt="Shield" style="vertical-align:-3px;margin-right:4px;" /> **Parser-assisted SQLi/XSS checks**: uses libinjection for SQL injection and XSS, alongside configurable pattern checks for other attack categories.
+- <img src="assets/icons/zap.svg" width="18" height="18" alt="Zap" style="vertical-align:-3px;margin-right:4px;" /> **Low-latency data plane**: OpenResty and LuaJIT, with connection pooling to the origin. Measure overhead in your own environment.
+- <img src="assets/icons/lock.svg" width="18" height="18" alt="Lock" style="vertical-align:-3px;margin-right:4px;" /> **No Outbound Telemetry by Default**: Runs on your own infrastructure. By default it does not send logs, traffic metrics, or SSL keys to an external service. The one request that runs unconfigured, and how to switch it off, is spelled out in [Architecture §5](./docs/ARCHITECTURE.md#5-zero-telemetry--data-sovereignty-guarantee).
+- <img src="assets/icons/bot.svg" width="18" height="18" alt="Bot" style="vertical-align:-3px;margin-right:4px;" /> **Bot challenge**: an optional proof-of-work challenge for scripted traffic, configurable per site.
+- <img src="assets/icons/cherry.svg" width="18" height="18" alt="Cherry" style="vertical-align:-3px;margin-right:4px;" /> **Native ARM64 & Raspberry Pi Ready**: Lightweight footprint (~300MB idle RAM) running natively on **Raspberry Pi 4 / 5, Orange Pi, Rockchip, Intel NUC, and Homelab SBC mini-PCs**. Perfect for home labs, self-hosted services, and small business on-premise appliances.
+- <img src="assets/icons/container.svg" width="18" height="18" alt="Container" style="vertical-align:-3px;margin-right:4px;" /> **Hardened Container Stack**: Least-privilege isolation, non-root worker execution (`uid 1000`), `no-new-privileges`, and in-memory `tmpfs` execution boundaries.
 
 ---
 
-## ⚡ Quick Start: 1-Line Installation
+## <img src="assets/icons/zap.svg" width="18" height="18" alt="Zap" style="vertical-align:-3px;margin-right:4px;" /> Quick Start: 1-Line Installation
 
 Deploy LynxWAF Community Edition on any Linux VPS or dedicated server in under 2 minutes:
 
@@ -70,7 +70,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ones006/LynxWAF-CE/main/
 
 ---
 
-## 🛠️ Manual Deployment via Docker Compose
+## <img src="assets/icons/wrench.svg" width="18" height="18" alt="Wrench" style="vertical-align:-3px;margin-right:4px;" /> Manual Deployment via Docker Compose
 
 If you prefer full control over repository files and environment variables:
 
@@ -102,22 +102,22 @@ docker exec -it lynxwaf-daemon /app/LynxWaf set_auth_path "mysecretpath"
 
 ---
 
-## ✨ Key Features
+## <img src="assets/icons/sparkles.svg" width="18" height="18" alt="Sparkles" style="vertical-align:-3px;margin-right:4px;" /> Key Features
 
 | Feature | Description |
 | :--- | :--- |
-| **Semantic L7 Inspection** | Real-time AST parsing for SQLi, XSS, RCE, Path Traversal, and SSRF attacks. |
-| **OWASP CRS v4 Compatibility** | Industry-standard protection rules tailored for modern web applications and REST APIs. |
-| **Silent Anti-Bot PoW** | Frictionless cryptographic client challenge defeating headless browsers, scrapers, and credential stuffers. |
+| **L7 inspection** | libinjection for SQLi/XSS, plus pattern-based checks for RCE, path traversal, SSRF, and related categories. |
+| **OWASP CRS-style rules** | A curated rule set and an optional signed feed; this is not a certified OWASP CRS engine. |
+| **PoW bot challenge** | An optional client challenge intended to raise the cost of automated scraping and credential stuffing. |
 | **Automated Let's Encrypt** | Embedded ACME client for automated issuance and seamless zero-downtime certificate renewal. |
 | **Custom SSL/TLS Support** | Upload custom enterprise or wildcard certificates with instant Lua hot-reload. |
 | **Real-Time SOC Console** | Modern Vue 3 dashboard displaying threat attack graphs, live logs, and interception telemetry. |
-| **CC / Rate Limiting** | Sliding window rate limits stored in Redis to protect origin APIs against Layer 7 denial of service. |
-| **Hardened Container Security** | Unprivileged non-root workers (`uid 1000`), drop-all Linux capabilities on control plane, and in-memory `tmpfs` attack surface reduction. |
+| **Rate limiting** | Fixed-window counters in shared memory, with cluster-wide bans propagated through Redis. |
+| **Container hardening** | Unprivileged workers, dropped capabilities on the control plane, and `tmpfs` for ephemeral buffers. |
 
 ---
 
-## 📊 Feature Matrix: CE vs Sovereign Edition
+## <img src="assets/icons/bar-chart-3.svg" width="18" height="18" alt="Bar Chart 3" style="vertical-align:-3px;margin-right:4px;" /> Feature Matrix: CE vs Sovereign Edition
 
 LynxWAF Community Edition is **Free Forever** for 1 protected root domain (unlimited subdomains) on a single standalone node. Need more? **Professional Edition** covers 15 root domains at Rp 1.500.000 / node / month, and **Sovereign Edition** unlocks unlimited domains plus the full enterprise stack:
 
@@ -140,7 +140,7 @@ LynxWAF Community Edition is **Free Forever** for 1 protected root domain (unlim
 
 ---
 
-## 🧪 Attack Simulation & Testing
+## <img src="assets/icons/flask-conical.svg" width="18" height="18" alt="Flask Conical" style="vertical-align:-3px;margin-right:4px;" /> Attack Simulation & Testing
 
 Verify that your LynxWAF deployment is actively blocking malicious traffic with our included PoC test suite:
 
@@ -153,7 +153,7 @@ The script executes real-world attack vectors (SQLi, XSS, RCE, Path Traversal, S
 
 ---
 
-## 🍓 Homelab & Small Business Hardware Appliance
+## <img src="assets/icons/cherry.svg" width="18" height="18" alt="Cherry" style="vertical-align:-3px;margin-right:4px;" /> Homelab & Small Business Hardware Appliance
 
 LynxWAF is engineered with high-efficiency compiled Go and C/LuaJIT routines, making it exceptionally lightweight and suitable for running on cost-effective Single Board Computers (SBC) and low-power hardware:
 
@@ -175,12 +175,12 @@ Internet ───►│ [Port 80/443: LynxWAF L7 Semantic Inspection]├──�
 | **Intel NUC / Beelink / Chuwi Mini-PC** | `linux/amd64` | ~350 MB | Small & Medium Enterprise (SME) on-premise security appliance |
 | **Proxmox VE / KVM / ESXi VM** | `amd64` / `arm64` | ~400 MB | Virtualized edge security gateway |
 
-> **💡 Homelab Tip:**  
+> **<img src="assets/icons/lightbulb.svg" width="18" height="18" alt="Lightbulb" style="vertical-align:-3px;margin-right:4px;" /> Homelab Tip:**  
 > By placing LynxWAF on a Raspberry Pi or Mini-PC at your home network boundary, you can safely expose self-hosted services (Home Assistant, Nextcloud, Plex, Portainer, Vaultwarden, local web servers) to the internet while maintaining full protection against brute-force bots, SQL injections, and zero-day scanner exploits!
 
 ---
 
-## 💻 System Requirements
+## <img src="assets/icons/laptop.svg" width="18" height="18" alt="Laptop" style="vertical-align:-3px;margin-right:4px;" /> System Requirements
 
 - **Operating System**: Linux (Ubuntu 20.04+, Debian 11+, CentOS 7+, Rocky/AlmaLinux 8+, Alpine, Arch Linux)
 - **Architecture**: `x86_64` (`amd64`) or `aarch64` (`arm64`)
@@ -194,7 +194,7 @@ Internet ───►│ [Port 80/443: LynxWAF L7 Semantic Inspection]├──�
 
 ---
 
-## 📋 Management Commands
+## <img src="assets/icons/clipboard-list.svg" width="18" height="18" alt="Clipboard List" style="vertical-align:-3px;margin-right:4px;" /> Management Commands
 
 All operations can be performed using standard Docker Compose commands from your installation directory (`/opt/lynxwaf`):
 
@@ -227,7 +227,7 @@ sudo bash update.sh --dry-run
 
 ---
 
-## 🚀 Kernel-Level L4 Defense (eBPF / XDP) — Opt-In
+## <img src="assets/icons/rocket.svg" width="18" height="18" alt="Rocket" style="vertical-align:-3px;margin-right:4px;" /> Kernel-Level L4 Defense (eBPF / XDP) — Opt-In
 
 The default stack runs the management daemon unprivileged with every capability
 dropped, which is the safe default but cannot attach an XDP program to a NIC. In that
@@ -278,7 +278,7 @@ Verifier errors, attach failures and how to clear a program that blocks the atta
 
 ---
 
-## 🗑️ Uninstalling LynxWAF Community Edition
+## <img src="assets/icons/trash-2.svg" width="18" height="18" alt="Trash 2" style="vertical-align:-3px;margin-right:4px;" /> Uninstalling LynxWAF Community Edition
 
 To completely remove LynxWAF, stop all services, and wipe all local databases and configurations:
 
@@ -293,18 +293,18 @@ cd /opt/lynxwaf && sudo ./uninstall.sh --purge-images
 
 ---
 
-## 🚀 Upgrading to Sovereign Edition
+## <img src="assets/icons/rocket.svg" width="18" height="18" alt="Rocket" style="vertical-align:-3px;margin-right:4px;" /> Upgrading to Sovereign Edition
 
 Upgrading from Community Edition to Sovereign Edition requires **zero downtime and no re-installation**:
 1. Contact us via Telegram [**@onelynxs**](https://t.me/onelynxs) or email `ones006@gmail.com` to obtain an Ed25519-signed license (`lynxwaf.lic`).
 2. Open your LynxWAF Web Console (`https://<IP>:8379`).
-3. Navigate to **Settings ➔ License & Cryptography**.
+3. Navigate to **Settings <img src="assets/icons/arrow-right.svg" width="18" height="18" alt="Arrow Right" style="vertical-align:-3px;margin-right:4px;" /> License & Cryptography**.
 4. Paste your signed `.lic` content and click **Activate**.
 5. All Sovereign capabilities (eBPF XDP, AI Guardrails, Outbound DLP, unlimited domains) unlock **instantly in memory without container restarts**!
 
 ---
 
-## 📚 Documentation Index
+## <img src="assets/icons/library.svg" width="18" height="18" alt="Library" style="vertical-align:-3px;margin-right:4px;" /> Documentation Index
 
 - [Quick Start Guide](docs/QUICKSTART.md) — Step-by-step installation, firewall ports, and initial onboarding.
 - [Configuration Guide](docs/CONFIGURATION.md) — Reverse proxy upstreams, SSL certificates, and custom rules.
@@ -314,7 +314,7 @@ Upgrading from Community Edition to Sovereign Edition requires **zero downtime a
 
 ---
 
-## 🤝 Community & Support
+## <img src="assets/icons/handshake.svg" width="18" height="18" alt="Handshake" style="vertical-align:-3px;margin-right:4px;" /> Community & Support
 
 - **Telegram Support & Inquiries**: [**@onelynxs**](https://t.me/onelynxs)
 - **Bug Reports & Issues**: [GitHub Issues](https://github.com/ones006/LynxWAF-CE/issues)
@@ -323,7 +323,7 @@ Upgrading from Community Edition to Sovereign Edition requires **zero downtime a
 
 ---
 
-## 📄 License
+## <img src="assets/icons/file-text.svg" width="18" height="18" alt="File Text" style="vertical-align:-3px;margin-right:4px;" /> License
 
 - Deployment orchestration templates, compose stacks, and documentation are licensed under the **[Apache License 2.0](LICENSE)**.
 - LynxWAF Community Edition container binaries are provided **Free Forever** for personal and commercial production use on 1 protected root domain (unlimited subdomains) on 1 standalone node.

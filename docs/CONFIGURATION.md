@@ -31,7 +31,7 @@ LynxWAF acts as an inline Layer 7 reverse proxy sitting in front of your origin 
 
 ### B. Custom Enterprise / Wildcard SSL Upload
 If you use commercial SSL certificates (DigiCert, Sectigo, Cloudflare Origin CA) or internal corporate PKI:
-1. Open **Sites ➔ Site Configuration ➔ SSL/TLS Settings**.
+1. Open **Sites  Site Configuration  SSL/TLS Settings**.
 2. Select **Upload Custom Certificate**.
 3. Paste or upload the full certificate chain (`fullchain.pem` or `.crt`) and the private key (`privkey.key` or `.key`).
 4. Click **Apply Changes**. OpenResty reloads TLS keys in memory via Lua without dropping active keepalive connections.

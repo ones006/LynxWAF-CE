@@ -90,7 +90,7 @@ docker exec -it lynxwaf-daemon /app/LynxWaf create_default_user admin "PasswordK
 Untuk melindungi website atau API di belakang LynxWAF:
 
 1. Buka browser dan login ke Web Console di `https://<IP_SERVER>:8379`.
-2. Masuk ke menu **Sites ➔ Add Protected Site**.
+2. Masuk ke menu **Sites  Add Protected Site**.
 3. Masukkan parameter situs:
    - **Domain**: Nama domain publik (contoh: `api.perusahaan.com` dan `web.perusahaan.com`).
    - **Upstream Type**: `HTTP` atau `HTTPS`.
@@ -121,7 +121,7 @@ Jika ada laporan serangan atau komplain dari pengguna yang terblokir (*false pos
 ### 5.2 Membuka Blokir IP False Positive (Whitelist)
 Jika ada request pengguna sah yang terblokir:
 1. Klik pada baris log insiden untuk melihat rincian request (Header, Payload, URI, dan Rule ID yang terpicu).
-2. Jika terbukti aman, buka menu **Rules ➔ Whitelist / Exclusion**.
+2. Jika terbukti aman, buka menu **Rules  Whitelist / Exclusion**.
 3. Tambahkan Rule Exclusion:
    - Masukkan IP klien sah atau URL path spesifik (misal: `/webhook/payment`).
    - Tentukan rule ID yang diabaikan.

@@ -128,7 +128,7 @@ https://<YOUR_SERVER_IP>:8379/<SECURITY_ENTRANCE>
 ## 6. Onboarding Your First Protected Website
 
 1. Log in to the LynxWAF Web Console.
-2. Go to **Sites ➔ Add Protected Site**.
+2. Go to **Sites  Add Protected Site**.
 3. Fill in your website configuration:
    - **Domain**: `example.com` (and `www.example.com`)
    - **Upstream Type**: HTTP / HTTPS
