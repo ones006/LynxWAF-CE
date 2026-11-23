@@ -126,12 +126,12 @@ LynxWAF Community Edition is **Free Forever** for 1 protected root domain (unlim
 | **License Cost** | **Free Forever (Rp 0 / $0)** | Subscription OPEX / Perpetual CAPEX |
 | **Protected Domains** | **1 Root Domain** | 15 (Professional) to Unlimited (Sovereign) |
 | **Node Cluster Nodes** | **1 Standalone Node** | Multi-Node Active-Active HA Cluster |
-| **Semantic AST L7 Inspection** | Included | Included |
+| **parser-assisted L7 Inspection** | Included | Included |
 | **Silent PoW Anti-Bot Defense** | Included | Included |
 | **Automated Let's Encrypt SSL** | Included | Included |
 | **Real-time SOC Threat Dashboard** | Included | Included + SIEM / Syslog RFC 5424 Export |
-| **Kernel eBPF / XDP Anti-DDoS** | — | Included (Wire-Speed <100ns Packet Drop) |
-| **Isolated On-Premise AI Guardrails** | — | Included (Local LLM Prompt-Injection Defense) |
+| **Kernel eBPF / XDP Anti-DDoS** | — | Included (opt-in; IPv4; measure on your hardware) |
+| **Isolated On-Premise AI Guardrails** | — | Included (heuristic checks; optional verifier) |
 | **Outbound DLP (UU PDP No. 27/2022)** | — | Included (Automatic NIK / Credit Card Masking) |
 | **Compliance PDF Generator** | — | Included (PCI-DSS v4.0, ISO 27001, SOC 2 Reports) |
 | **White-Labeling & Custom Branding** | — | Included (Reseller / MSP Ready) |
@@ -268,7 +268,7 @@ their uid 1000 owner. Full list and the manual/air-gapped variant of the file:
 | Mode | Latency | Requirement |
 | --- | --- | --- |
 | **Generic** (default) | ~200–500 ns | Any Linux kernel ≥ 4.13, any NIC |
-| **Native** | < 100 ns | NIC driver must support `.ndo_bpf` (Intel i225/i226/i210/X520/E810, Realtek RTL8125/8168, Mellanox ConnectX-4+, Broadcom BCM5720) |
+| **Native** | sub-microsecond target | NIC driver must support `.ndo_bpf` (Intel i225/i226/i210/X520/E810, Realtek RTL8125/8168, Mellanox ConnectX-4+, Broadcom BCM5720) |
 | **Hardware Offload** | < 20 ns | SmartNIC only: NVIDIA ConnectX-4/5/6/7, Netronome NFP3800/4000, Intel E810-C (kernel ≥ 6.1) |
 
 Start with **Generic**; switch to **Native** if your NIC supports it (check:

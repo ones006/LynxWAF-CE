@@ -46,7 +46,7 @@ graph TD
 - Bound strictly to localhost (`127.0.0.1:33060`) to prevent external exposure.
 
 ### 4. Fast Cache & State (`lynxwaf-redis`)
-- Redis 7 In-Memory engine handling anti-bot Proof-of-Work seeds, token verification, and per-second IP sliding window rate limit counters.
+- Redis 7 In-Memory engine handling anti-bot Proof-of-Work seeds, token verification, and per-second IP fixed-window rate limit counters.
 - Bound strictly to localhost (`127.0.0.1:6379`).
 
 ---
@@ -81,8 +81,8 @@ LynxWAF applies the principle of least privilege and strict isolation across its
 2. TLS Termination & SNI routing evaluated by OpenResty.
 3. IP Access Control Check (Whitelist  bypass; Blacklist  drop).
 4. Silent Anti-Bot Challenge (Evaluates PoW token cookie if challenge enabled).
-5. Rate Limiting Check (Evaluates sliding window counters in Redis).
-6. L7 Semantic AST Inspection:
+5. Rate Limiting Check (Evaluates fixed-window counters in Redis).
+6. L7 parser-assisted Inspection:
    - Request URI & Query parameters
    - Request Headers & User-Agent
    - Request Body (JSON, Multipart form, URL-encoded)

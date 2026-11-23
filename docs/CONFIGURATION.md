@@ -42,7 +42,7 @@ If you use commercial SSL certificates (DigiCert, Sectigo, Cloudflare Origin CA)
 
 LynxWAF Community Edition includes three core inspection engines:
 
-### 1. Semantic AST Inspection Engine
+### 1. parser-assisted Inspection Engine
 Unlike traditional regex-only WAFs that are easily bypassed by character encoding or comment tricks (`/**/`), LynxWAF parses incoming payloads into Abstract Syntax Trees (AST) to evaluate real semantic execution risk:
 - **SQL Injection (SQLi)**: Detects boolean tautologies, stacked queries, union extractions, and out-of-band channels.
 - **Cross-Site Scripting (XSS)**: Evaluates script tags, DOM attributes (`onload`, `onerror`), and JavaScript protocol injections.
